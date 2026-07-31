@@ -125,7 +125,7 @@ docker compose up -d postgres
 
 ```bash
 # PowerShell y bash
-docker compose run --rm api uv run alembic upgrade head
+docker compose run --rm api alembic upgrade head
 ```
 
 ### Iniciar Todo
@@ -146,28 +146,28 @@ docker compose logs -f
 
 ```bash
 # PowerShell y bash
-docker compose run --rm api uv run pytest
+docker compose run --rm api pytest
 ```
 
 ### Ejecutar Lint
 
 ```bash
 # PowerShell y bash
-docker compose run --rm api uv run ruff check .
+docker compose run --rm api ruff check .
 ```
 
 ### Verificar Formato
 
 ```bash
 # PowerShell y bash
-docker compose run --rm api uv run ruff format --check .
+docker compose run --rm api ruff format --check .
 ```
 
 ### Ejecutar mypy
 
 ```bash
 # PowerShell y bash
-docker compose run --rm api uv run mypy src
+docker compose run --rm api mypy src
 ```
 
 ### Detener
@@ -185,6 +185,19 @@ docker compose down --volumes
 ```
 
 **ADVERTENCIA**: Este comando elimina todos los datos de PostgreSQL.
+
+### Cambiar Contraseña de PostgreSQL
+
+Cambiar `POSTGRES_PASSWORD` en `.env` no actualiza la contraseña dentro de un volumen PostgreSQL existente. Si se cambió la contraseña y aparece `password authentication failed`:
+
+```bash
+# PowerShell y bash (desarrollo vacío, sin datos reales)
+docker compose down --volumes --remove-orphans
+docker compose up -d postgres
+```
+
+> **Nota**: Esta operación es destructiva. Solo usar en desarrollo cuando no
+> existan datos persistentes relevantes.
 
 ## Verificación
 
@@ -333,7 +346,7 @@ Para mover el proyecto a otro servidor:
 3. Verificar que Docker y Docker Compose están instalados
 4. Configurar acceso a Ollama (`OLLAMA_BASE_URL`)
 5. Ejecutar `docker compose up -d postgres`
-6. Ejecutar migraciones: `docker compose run --rm api uv run alembic upgrade head`
+6. Ejecutar migraciones: `docker compose run --rm api alembic upgrade head`
 7. Ejecutar `docker compose up -d`
 
 No se requieren cambios de código ni rutas codificadas.

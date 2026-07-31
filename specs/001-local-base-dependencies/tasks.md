@@ -19,13 +19,13 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Estructura base, dependencias y configuración de herramientas
 
-- [ ] T001 Crear `apps/api/pyproject.toml` con dependencias del proyecto y scripts
-- [ ] T002 Ejecutar `uv sync` para generar `uv.lock` y verificar resolución
-- [ ] T003 Crear `apps/api/.python-version` con `3.12`
-- [ ] T004 Crear `apps/api/ruff.toml` con configuración de linting y formato
-- [ ] T005 Crear `apps/api/mypy.ini` con configuración de tipado estático
-- [ ] T006 Crear `apps/api/pytest.ini` con configuración de pruebas
-- [ ] T007 Crear `.editorconfig` en la raíz del repositorio
+- [x] T001 Crear `apps/api/pyproject.toml` con dependencias del proyecto y scripts
+- [x] T002 Ejecutar `uv sync` para generar `uv.lock` y verificar resolución
+- [x] T003 Crear `apps/api/.python-version` con `3.12`
+- [x] T004 Crear `apps/api/ruff.toml` con configuración de linting y formato
+- [x] T005 Crear `apps/api/mypy.ini` con configuración de tipado estático
+- [x] T006 Crear `apps/api/pytest.ini` con configuración de pruebas
+- [x] T007 Crear `.editorconfig` en la raíz del repositorio
 
 **Checkpoint**: Proyecto inicializado, `uv sync` exitoso
 
@@ -35,10 +35,10 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Configuración de la aplicación con pydantic-settings
 
-- [ ] T008 Crear `apps/api/src/legal_ai/__init__.py` con versión del paquete
-- [ ] T009 Crear `apps/api/src/legal_ai/config.py` con `AppConfig`, `PostgreSQLConfig`, `OllamaConfig` (incluyendo `OLLAMA_API_TOKEN` como obligatorio sin default)
-- [ ] T010 Crear `.env.example` en la raíz con todas las variables documentadas (incluir `OLLAMA_API_TOKEN=<PLACEHOLDER>`, `OLLAMA_BASE_URL` sin valor por defecto)
-- [ ] T011 Crear `apps/api/src/legal_ai/config/__init__.py` (si se usa paquete de configuración)
+- [x] T008 Crear `apps/api/src/legal_ai/__init__.py` con versión del paquete
+- [x] T009 Crear `apps/api/src/legal_ai/config.py` con `AppConfig`, `PostgreSQLConfig`, `OllamaConfig` (incluyendo `OLLAMA_API_TOKEN` como obligatorio sin default)
+- [x] T010 Crear `.env.example` en la raíz con todas las variables documentadas (incluir `OLLAMA_API_TOKEN=<PLACEHOLDER>`, `OLLAMA_BASE_URL` sin valor por defecto)
+- [x] T011 Crear `apps/api/src/legal_ai/config/__init__.py` (si se usa paquete de configuración)
 
 **Checkpoint**: Configuración validada, `.env.example` documentado
 
@@ -48,11 +48,11 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Modelos de dominio y schemas Pydantic para health checks
 
-- [ ] T012 [P] Crear `apps/api/src/legal_ai/domain/__init__.py`
-- [ ] T013 [P] Crear `apps/api/src/legal_ai/domain/health.py` con `DependencyHealth`, `HealthStatus`, `HealthResponse`
-- [ ] T014 [P] Crear `apps/api/src/legal_ai/schemas/__init__.py`
-- [ ] T015 [P] Crear `apps/api/src/legal_ai/schemas/health.py` con schemas Pydantic para los 3 endpoints
-- [ ] T016 [P] Crear `apps/api/src/legal_ai/schemas/errors.py` con schema de error estructurado
+- [x] T012 [P] Crear `apps/api/src/legal_ai/domain/__init__.py`
+- [x] T013 [P] Crear `apps/api/src/legal_ai/domain/health.py` con `DependencyHealth`, `HealthStatus`, `HealthResponse`
+- [x] T014 [P] Crear `apps/api/src/legal_ai/schemas/__init__.py`
+- [x] T015 [P] Crear `apps/api/src/legal_ai/schemas/health.py` con schemas Pydantic para los 3 endpoints
+- [x] T016 [P] Crear `apps/api/src/legal_ai/schemas/errors.py` con schema de error estructurado
 
 **Checkpoint**: Modelos de dominio y schemas definidos
 
@@ -62,9 +62,9 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Interfaces abstractas para adaptadores de dependencias
 
-- [ ] T017 [P] Crear `apps/api/src/legal_ai/ports/__init__.py`
-- [ ] T018 [P] Crear `apps/api/src/legal_ai/ports/database_health.py` con `DatabaseHealthPort`
-- [ ] T019 [P] Crear `apps/api/src/legal_ai/ports/ollama_health.py` con `OllamaHealthPort`
+- [x] T017 [P] Crear `apps/api/src/legal_ai/ports/__init__.py`
+- [x] T018 [P] Crear `apps/api/src/legal_ai/ports/database_health.py` con `DatabaseHealthPort`
+- [x] T019 [P] Crear `apps/api/src/legal_ai/ports/ollama_health.py` con `OllamaHealthPort`
 
 **Checkpoint**: Interfaces definidas, separación de concerns clara
 
@@ -74,13 +74,13 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Implementaciones concretas de verificación de dependencias
 
-- [ ] T020 Crear `apps/api/src/legal_ai/adapters/__init__.py`
-- [ ] T021 Crear `apps/api/src/legal_ai/adapters/database/__init__.py`
-- [ ] T022 Crear `apps/api/src/legal_ai/adapters/database/engine.py` con SQLAlchemy async engine
-- [ ] T023 Crear `apps/api/src/legal_ai/adapters/database/health.py` con `PostgreSQLHealthAdapter`
-- [ ] T024 Crear `apps/api/src/legal_ai/adapters/ollama/__init__.py`
-- [ ] T025 Crear `apps/api/src/legal_ai/adapters/ollama/client.py` con HTTPX AsyncClient (headers `Authorization: Bearer`, `OLLAMA_API_TOKEN` desde config)
-- [ ] T026 Crear `apps/api/src/legal_ai/adapters/ollama/health.py` con `OllamaHealthAdapter` (health check: `GET /api/version`, Bearer auth, estados: ok, unavailable, timeout, misconfigured, invalid_response, unauthorized, forbidden, rate_limited)
+- [x] T020 Crear `apps/api/src/legal_ai/adapters/__init__.py`
+- [x] T021 Crear `apps/api/src/legal_ai/adapters/database/__init__.py`
+- [x] T022 Crear `apps/api/src/legal_ai/adapters/database/engine.py` con SQLAlchemy async engine
+- [x] T023 Crear `apps/api/src/legal_ai/adapters/database/health.py` con `PostgreSQLHealthAdapter`
+- [x] T024 Crear `apps/api/src/legal_ai/adapters/ollama/__init__.py`
+- [x] T025 Crear `apps/api/src/legal_ai/adapters/ollama/client.py` con HTTPX AsyncClient (headers `Authorization: Bearer`, `OLLAMA_API_TOKEN` desde config)
+- [x] T026 Crear `apps/api/src/legal_ai/adapters/ollama/health.py` con `OllamaHealthAdapter` (health check: `GET /api/version`, Bearer auth, estados: ok, unavailable, timeout, misconfigured, invalid_response, unauthorized, forbidden, rate_limited)
 
 **Checkpoint**: Adaptadores implementados, PostgreSQL y Ollama verificables
 
@@ -90,8 +90,8 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Lógica de orquestación de health checks
 
-- [ ] T027 Crear `apps/api/src/legal_ai/application/__init__.py`
-- [ ] T028 Crear `apps/api/src/legal_ai/application/health_service.py` con `HealthService`
+- [x] T027 Crear `apps/api/src/legal_ai/application/__init__.py`
+- [x] T028 Crear `apps/api/src/legal_ai/application/health_service.py` con `HealthService`
 
 **Checkpoint**: Lógica de health checks separada de controladores HTTP
 
@@ -101,9 +101,9 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Logging estructurado y middleware de request context
 
-- [ ] T029 [P] Crear `apps/api/src/legal_ai/observability/__init__.py`
-- [ ] T030 [P] Crear `apps/api/src/legal_ai/observability/logging.py` con configuración de logging estructurado
-- [ ] T031 [P] Crear `apps/api/src/legal_ai/observability/request_context.py` con middleware `request_id`
+- [x] T029 [P] Crear `apps/api/src/legal_ai/observability/__init__.py`
+- [x] T030 [P] Crear `apps/api/src/legal_ai/observability/logging.py` con configuración de logging estructurado
+- [x] T031 [P] Crear `apps/api/src/legal_ai/observability/request_context.py` con middleware `request_id`
 
 **Checkpoint**: Observabilidad mínima configurada
 
@@ -113,11 +113,11 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Controladores y router de FastAPI
 
-- [ ] T032 Crear `apps/api/src/legal_ai/api/__init__.py`
-- [ ] T033 Crear `apps/api/src/legal_ai/api/router.py` con router principal
-- [ ] T034 Crear `apps/api/src/legal_ai/api/routes/__init__.py`
-- [ ] T035 Crear `apps/api/src/legal_ai/api/routes/health.py` con controladores de los 3 endpoints
-- [ ] T036 Crear `apps/api/src/legal_ai/main.py` con FastAPI app y lifespan
+- [x] T032 Crear `apps/api/src/legal_ai/api/__init__.py`
+- [x] T033 Crear `apps/api/src/legal_ai/api/router.py` con router principal
+- [x] T034 Crear `apps/api/src/legal_ai/api/routes/__init__.py`
+- [x] T035 Crear `apps/api/src/legal_ai/api/routes/health.py` con controladores de los 3 endpoints
+- [x] T036 Crear `apps/api/src/legal_ai/main.py` con FastAPI app y lifespan
 
 **Checkpoint**: API funcional con los 3 endpoints de health check
 
@@ -127,10 +127,10 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Alembic configurado con primera migración
 
-- [ ] T037 Crear `apps/api/alembic.ini` con configuración de Alembic
-- [ ] T038 Crear `apps/api/alembic/env.py` con soporte async
-- [ ] T039 Crear `apps/api/alembic/script.py.mako` con template de migración
-- [ ] T040 Crear `apps/api/alembic/versions/001_enable_pgvector.py` con `CREATE EXTENSION IF NOT EXISTS vector`
+- [x] T037 Crear `apps/api/alembic.ini` con configuración de Alembic
+- [x] T038 Crear `apps/api/alembic/env.py` con soporte async
+- [x] T039 Crear `apps/api/alembic/script.py.mako` con template de migración
+- [x] T040 Crear `apps/api/alembic/versions/001_enable_pgvector.py` con `CREATE EXTENSION IF NOT EXISTS vector`
 
 **Checkpoint**: Migraciones versionadas, primera migración lista
 
@@ -140,12 +140,12 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Contenedores y orquestación local
 
-- [ ] T041 Crear `apps/api/Dockerfile` multi-stage (builder + runtime)
-- [ ] T042 Crear `compose.yaml` en la raíz con servicios `api` y `postgres`
-- [ ] T043 Crear `.gitignore` en la raíz
-- [ ] T044 Crear `.dockerignore` en la raíz
-- [ ] T045 Crear `scripts/dev.ps1` wrapper PowerShell (opcional)
-- [ ] T046 Crear `scripts/dev.sh` wrapper bash (opcional)
+- [x] T041 Crear `apps/api/Dockerfile` multi-stage (builder + runtime)
+- [x] T042 Crear `compose.yaml` en la raíz con servicios `api` y `postgres`
+- [x] T043 Crear `.gitignore` en la raíz
+- [x] T044 Crear `.dockerignore` en la raíz
+- [x] T045 Crear `scripts/dev.ps1` wrapper PowerShell (opcional)
+- [x] T046 Crear `scripts/dev.sh` wrapper bash (opcional)
 
 **Checkpoint**: `docker compose up -d` funcional
 
@@ -155,13 +155,13 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Pruebas de componentes aislados con mocks/fakes
 
-- [ ] T047 Crear `apps/api/tests/__init__.py`
-- [ ] T048 Crear `apps/api/tests/conftest.py` con fixtures compartidos
-- [ ] T049 Crear `apps/api/tests/unit/__init__.py`
-- [ ] T050 Crear `apps/api/tests/unit/test_config.py` con validación de configuración
-- [ ] T051 Crear `apps/api/tests/unit/test_health_service.py` con pruebas del servicio con fakes
-- [ ] T052 Crear `apps/api/tests/unit/test_schemas.py` con validación de schemas Pydantic
-- [ ] T053 Crear `apps/api/tests/unit/test_request_context.py` con pruebas de middleware
+- [x] T047 Crear `apps/api/tests/__init__.py`
+- [x] T048 Crear `apps/api/tests/conftest.py` con fixtures compartidos
+- [x] T049 Crear `apps/api/tests/unit/__init__.py`
+- [x] T050 Crear `apps/api/tests/unit/test_config.py` con validación de configuración
+- [x] T051 Crear `apps/api/tests/unit/test_health_service.py` con pruebas del servicio con fakes
+- [x] T052 Crear `apps/api/tests/unit/test_schemas.py` con validación de schemas Pydantic
+- [x] T053 Crear `apps/api/tests/unit/test_request_context.py` con pruebas de middleware
 
 **Checkpoint**: Pruebas unitarias pasan sin dependencias externas
 
@@ -171,10 +171,10 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Validación de contratos HTTP de los 3 endpoints
 
-- [ ] T054 Crear `apps/api/tests/contract/__init__.py`
-- [ ] T055 Crear `apps/api/tests/contract/test_health_live.py` con contrato de `/health/live`
-- [ ] T056 Crear `apps/api/tests/contract/test_health_ready.py` con contrato de `/health/ready`
-- [ ] T057 Crear `apps/api/tests/contract/test_health_dependencies.py` con contrato de `/health/dependencies` (estados agregados: ok, partial, error; estados individuales con auth: unauthorized, forbidden, rate_limited)
+- [x] T054 Crear `apps/api/tests/contract/__init__.py`
+- [x] T055 Crear `apps/api/tests/contract/test_health_live.py` con contrato de `/health/live`
+- [x] T056 Crear `apps/api/tests/contract/test_health_ready.py` con contrato de `/health/ready`
+- [x] T057 Crear `apps/api/tests/contract/test_health_dependencies.py` con contrato de `/health/dependencies` (estados agregados: ok, partial, error; estados individuales con auth: unauthorized, forbidden, rate_limited)
 
 **Checkpoint**: Contratos HTTP validados
 
@@ -184,9 +184,9 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 
 **Propósito**: Pruebas con PostgreSQL real y migraciones
 
-- [ ] T058 Crear `apps/api/tests/integration/__init__.py`
-- [ ] T059 Crear `apps/api/tests/integration/test_postgres.py` con conexión real
-- [ ] T060 Crear `apps/api/tests/integration/test_migrations.py` con verificación de migración
+- [x] T058 Crear `apps/api/tests/integration/__init__.py`
+- [x] T059 Crear `apps/api/tests/integration/test_postgres.py` con conexión real
+- [x] T060 Crear `apps/api/tests/integration/test_migrations.py` con verificación de migración
 
 **Checkpoint**: Pruebas de integración pasan con `docker compose up -d postgres`
 
@@ -197,7 +197,7 @@ Application → HTTP → Observability → Migraciones → Docker → Pruebas �
 **Propósito**: Pruebas del adaptador con mocks para todos los escenarios
 incluyendo autenticación Bearer y códigos HTTP específicos
 
-- [ ] T061 Crear `apps/api/tests/unit/test_ollama_adapter.py` con mocks para:
+- [x] T061 Crear `apps/api/tests/unit/test_ollama_adapter.py` con mocks para:
   - Respuesta exitosa (GET /api/version, JSON con version string no vacío)
   - Timeout
   - Conexión rechazada
@@ -222,13 +222,13 @@ incluyendo autenticación Bearer y códigos HTTP específicos
 
 **Propósito**: Verificación final, documentación y calidad
 
-- [ ] T062 Ejecutar `uv run ruff check .` y corregir issues
-- [ ] T063 Ejecutar `uv run ruff format --check .` y corregir formato
-- [ ] T064 Ejecutar `uv run mypy src` y corregir errores de tipo
-- [ ] T065 Ejecutar `uv run pytest --cov=src/legal_ai --cov-report=term-missing` y verificar cobertura >= 85%
-- [ ] T066 Crear `README.md` en la raíz con documentación completa
-- [ ] T067 Verificar quickstart.md ejecutando los comandos documentados
-- [ ] T068 Ejecutar `docker compose down --volumes` y verificar limpieza
+- [x] T062 Ejecutar `uv run ruff check .` y corregir issues
+- [x] T063 Ejecutar `uv run ruff format --check .` y corregir formato
+- [x] T064 Ejecutar `uv run mypy src` y corregir errores de tipo
+- [x] T065 Ejecutar `uv run pytest --cov=src/legal_ai --cov-report=term-missing` y verificar cobertura >= 85%
+- [x] T066 Crear `README.md` en la raíz con documentación completa
+- [x] T067 Verificar quickstart.md ejecutando los comandos documentados
+- [x] T068 Ejecutar `docker compose down --volumes` y verificar limpieza
 
 **Checkpoint**: Todos los checks pasan, documentación completa
 
