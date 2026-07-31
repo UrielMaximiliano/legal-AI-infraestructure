@@ -14,8 +14,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Este incremento todavía no posee tablas de dominio.
-target_metadata = None
+from legal_ai.adapters.database.models import Base  # noqa: E402
+
+target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
