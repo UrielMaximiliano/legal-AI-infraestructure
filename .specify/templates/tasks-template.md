@@ -1,162 +1,219 @@
 ---
 
-description: "Task list template for feature implementation"
+description: "Task list template for infrastructure implementation"
 ---
 
-# Tasks: [FEATURE NAME]
+# Tasks: [INFRASTRUCTURE NAME]
 
-**Input**: Design documents from `/specs/[###-feature-name]/`
+**Input**: Design documents from `/specs/[###-infrastructure-name]/`
+**Prerequisites**: plan.md (required), spec.md (required), research.md, architecture.md, modules.md, quickstart.md
 
-**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
+**Note**: The examples below show infrastructure implementation tasks organized by tier.
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Organization**: Tasks grouped by infrastructure tier following dependency hierarchy (Foundation → Network → Compute/Data → Application)
 
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+## Format: `[ID] [P?] Description`
 
-## Format: `[ID] [P?] [Story] Description`
+- **[ID]**: Sequential task number (T001, T002, T003...)
+- **[P]**: Can run in parallel (different files, no dependencies) - optional
+- **Description**: Clear action with exact file path included
 
-- **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
-- Include exact file paths in descriptions
+Tasks are organized by infrastructure tier in the phase structure below
 
 ## Path Conventions
 
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+- **IaC files**: `iac/` at repository root
+- **Terraform**: `iac/*.tf`, `iac/terraform.tfvars.{env}`, `iac/modules/`
+- **Pulumi**: `iac/*.ts` or `iac/*.py`, `Pulumi.{stack}.yaml`
+- **CloudFormation**: `iac/*.yaml`, `iac/parameters/`
+
+Paths shown below are examples - adjust based on structure defined in plan.md
 
 <!--
   ============================================================================
   IMPORTANT: The tasks below are SAMPLE TASKS for illustration purposes only.
 
-  The /speckit.tasks command MUST replace these with actual tasks based on:
-  - User stories from spec.md (with their priorities P1, P2, P3...)
-  - Feature requirements from plan.md
-  - Entities from data-model.md
-  - Endpoints from contracts/
+  The /iac.tasks command MUST replace these with actual tasks based on:
+  - Infrastructure requirements from spec.md (Must Have, Should Have priorities)
+  - Architecture design from plan.md and architecture.md
+  - Resource specifications and dependencies
+  - Module definitions from modules.md (if using modules)
 
-  Tasks MUST be organized by user story so each story can be:
-  - Implemented independently
-  - Tested independently
-  - Delivered as an MVP increment
+  Tasks MUST be organized by infrastructure tier following dependency hierarchy:
+  - Foundation → Network → Compute/Data → Application
+  - Each tier must complete before the next can begin
+  - Resources within a tier can execute in parallel where independent
 
   DO NOT keep these sample tasks in the generated tasks.md file.
   ============================================================================
 -->
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1: Setup
 
-**Purpose**: Project initialization and basic structure
+**Purpose**: IaC project initialization and directory structure
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+<!-- Terraform Example (IBM Cloud): -->
+- [ ] T001 Create iac/ directory structure per plan.md
+- [ ] T002 [P] Configure Terraform backend (IBM Cloud Object Storage) in iac/backend.tf
+- [ ] T003 [P] Configure IBM Cloud provider in iac/provider.tf
+- [ ] T004 [P] Create versions.tf with Terraform and ibm provider version constraints
+- [ ] T005 Create terraform.tfvars files for each environment (dev/staging/prod)
+- [ ] T006 Run `terraform init` to initialize backend and download providers
+- [ ] T007 Run `terraform validate` - setup checkpoint
 
----
-
-## Phase 2: Foundational (Blocking Prerequisites)
-
-**Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
-
-**⚠️ CRITICAL**: No user story work can begin until this phase is complete
-
-Examples of foundational tasks (adjust based on your project):
-
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
-
-**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
+<!-- Pulumi Example (IBM Cloud):
+- [ ] T001 Create iac/ directory structure per plan.md
+- [ ] T002 Initialize Pulumi project with `pulumi new`
+- [ ] T003 [P] Configure Pulumi backend (Pulumi Cloud or IBM COS)
+- [ ] T004 [P] Create Pulumi.dev.yaml, Pulumi.staging.yaml, Pulumi.prod.yaml stack configs
+- [ ] T005 Install required dependencies including @pulumi/ibm
+- [ ] T006 Run `pulumi preview` - setup checkpoint
+-->
 
 ---
 
-## Phase 3: User Story 1 - [Title] (Priority: P1) 🎯 MVP
+## Phase 2: Network Tier
 
-**Goal**: [Brief description of what this story delivers]
+**Purpose**: Network infrastructure - prerequisite for all compute/data resources
 
-**Independent Test**: [How to verify this story works on its own]
+**⚠️ CRITICAL**: Network tier MUST complete before compute resources can be provisioned
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+<!-- Terraform Example (IBM Cloud): -->
+- [ ] T008 Create VPC with address prefixes per plan.md in iac/vpc.tf
+- [ ] T009 [P] Create subnets across zones (us-south-1, us-south-2, us-south-3) in iac/vpc.tf
+- [ ] T010 [P] Create Public Gateway for private subnet internet access in iac/vpc.tf
+- [ ] T011 [P] Attach Public Gateway to subnets in iac/vpc.tf
+- [ ] T012 [P] Create security groups (load balancer, compute, database) in iac/security-groups.tf
+- [ ] T013 [P] Create network ACLs for subnet-level security in iac/network-acls.tf
+- [ ] T014 [P] Create IAM access groups and policies in iac/iam.tf
+- [ ] T015 [P] Create resource groups for environment organization in iac/resource-groups.tf
+- [ ] T016 Run `terraform validate` - network tier checkpoint
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+<!-- Pulumi Example (IBM Cloud):
+- [ ] T008 Create VPC with address prefixes in iac/networking.ts
+- [ ] T009 [P] Create subnets across zones in iac/networking.ts
+- [ ] T010 [P] Create Public Gateway and attach to subnets in iac/networking.ts
+- [ ] T011 [P] Create security groups in iac/security.ts
+- [ ] T012 [P] Create network ACLs in iac/security.ts
+- [ ] T013 [P] Create IAM access groups in iac/iam.ts
+- [ ] T014 Run `pulumi preview` - network tier checkpoint
+-->
 
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
-
-### Implementation for User Story 1
-
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
-
-**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
-
----
-
-## Phase 4: User Story 2 - [Title] (Priority: P2)
-
-**Goal**: [Brief description of what this story delivers]
-
-**Independent Test**: [How to verify this story works on its own]
-
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
-
-- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
-
-### Implementation for User Story 2
-
-- [ ] T020 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T021 [US2] Implement [Service] in src/services/[service].py
-- [ ] T022 [US2] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T023 [US2] Integrate with User Story 1 components (if needed)
-
-**Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
+**Checkpoint**: Network tier complete - compute and data resources can now be provisioned
 
 ---
 
-## Phase 5: User Story 3 - [Title] (Priority: P3)
+## Phase 3: Compute & Data Tier
 
-**Goal**: [Brief description of what this story delivers]
+**Purpose**: Compute resources, databases, storage, and load balancers
 
-**Independent Test**: [How to verify this story works on its own]
+**Dependencies**: Requires Network Tier (Phase 2) to be complete
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+<!-- Terraform Example (IBM Cloud): -->
+- [ ] T017 [P] Create IBM Cloud Databases for PostgreSQL in iac/database.tf
+- [ ] T018 [P] Configure database auto-scaling and backups in iac/database.tf
+- [ ] T019 [P] Create IBM Cloud Databases for Redis in iac/cache.tf
+- [ ] T020 [P] Create Cloud Object Storage instance in iac/storage.tf
+- [ ] T021 [P] Create COS buckets (static assets, application data) in iac/storage.tf
+- [ ] T022 [P] Configure bucket policies and lifecycle rules in iac/storage.tf
+- [ ] T023 Create VPC Load Balancer (Application Load Balancer) in iac/loadbalancer.tf
+- [ ] T024 [P] Create load balancer pools and listeners in iac/loadbalancer.tf
+- [ ] T025 [P] Configure health checks for load balancer in iac/loadbalancer.tf
+- [ ] T026 Create Code Engine project in iac/compute.tf
+- [ ] T027 [P] Create Code Engine application with auto-scaling in iac/compute.tf
+- [ ] T028 [P] Configure Code Engine environment variables and secrets in iac/compute.tf
+- [ ] T029 Run `terraform validate` - compute/data tier checkpoint
+- [ ] T030 Run `terraform plan -var-file=terraform.tfvars.dev` to preview changes
 
-- [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+<!-- Alternative: Kubernetes Service Example (IBM Cloud):
+- [ ] T026 Create IBM Cloud Kubernetes Service (IKS) cluster in iac/compute.tf
+- [ ] T027 [P] Configure IKS worker pools across zones in iac/compute.tf
+- [ ] T028 [P] Create Kubernetes namespaces in iac/k8s-config.tf
+- [ ] T029 [P] Deploy application workloads via Helm or kubectl in iac/k8s-workloads.tf
+-->
 
-### Implementation for User Story 3
+<!-- Pulumi Example (IBM Cloud):
+- [ ] T017 [P] Create IBM Cloud Databases for PostgreSQL in iac/storage.ts
+- [ ] T018 [P] Create IBM Cloud Databases for Redis in iac/storage.ts
+- [ ] T019 [P] Create Cloud Object Storage instance and buckets in iac/storage.ts
+- [ ] T020 Create VPC Load Balancer in iac/compute.ts
+- [ ] T021 [P] Configure load balancer pools and listeners in iac/compute.ts
+- [ ] T022 Create Code Engine project and applications in iac/compute.ts
+- [ ] T023 [P] Configure auto-scaling policies in iac/compute.ts
+- [ ] T024 Run `pulumi preview` - compute/data tier checkpoint
+-->
 
-- [ ] T026 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T027 [US3] Implement [Service] in src/services/[service].py
-- [ ] T028 [US3] Implement [endpoint/feature] in src/[location]/[file].py
-
-**Checkpoint**: All user stories should now be independently functional
+**Checkpoint**: Compute and data tier complete - application tier can now be configured
 
 ---
 
-[Add more user story phases as needed, following the same pattern]
+## Phase 4: Application Tier
+
+**Purpose**: DNS, CDN, monitoring, alerting, and application-specific configuration
+
+**Dependencies**: Requires Compute & Data Tier (Phase 3) to be complete
+
+<!-- Terraform Example (IBM Cloud): -->
+- [ ] T031 [P] Create Internet Services (CIS) instance for DNS and CDN in iac/dns.tf
+- [ ] T032 [P] Configure DNS zones and records in iac/dns.tf
+- [ ] T033 [P] Enable CDN and configure caching rules in iac/cdn.tf
+- [ ] T034 [P] Configure SSL/TLS certificates in iac/certificates.tf
+- [ ] T035 [P] Create IBM Cloud Monitoring instance in iac/monitoring.tf
+- [ ] T036 [P] Configure monitoring dashboards and metrics in iac/monitoring.tf
+- [ ] T037 [P] Create Event Notifications instance in iac/notifications.tf
+- [ ] T038 [P] Configure alerting policies and notification channels in iac/alerts.tf
+- [ ] T039 [P] Create Activity Tracker instance for audit logging in iac/logging.tf
+- [ ] T040 [P] Configure log routing and retention policies in iac/logging.tf
+- [ ] T041 [P] Create Secrets Manager instance in iac/secrets.tf
+- [ ] T042 [P] Store application secrets and credentials in iac/secrets.tf
+- [ ] T043 Run `terraform validate` - application tier checkpoint
+- [ ] T044 Run `terraform plan -var-file=terraform.tfvars.dev` to preview changes
+
+<!-- Pulumi Example (IBM Cloud):
+- [ ] T031 [P] Create Internet Services instance in iac/dns.ts
+- [ ] T032 [P] Configure DNS zones, records, and CDN in iac/dns.ts
+- [ ] T033 [P] Create monitoring and alerting in iac/monitoring.ts
+- [ ] T034 [P] Configure Activity Tracker in iac/logging.ts
+- [ ] T035 [P] Create Secrets Manager instance in iac/secrets.ts
+- [ ] T036 Run `pulumi preview` - application tier checkpoint
+-->
+
+**Checkpoint**: Application tier complete - infrastructure ready for deployment validation
+
+---
+
+---
+
+[Add more infrastructure tier phases as needed based on your architecture]
 
 ---
 
 ## Phase N: Polish & Cross-Cutting Concerns
 
-**Purpose**: Improvements that affect multiple user stories
+**Purpose**: Final validation, formatting, documentation, and deployment readiness
 
-- [ ] TXXX [P] Documentation updates in docs/
-- [ ] TXXX Code cleanup and refactoring
-- [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
-- [ ] TXXX Security hardening
+<!-- Terraform Example (IBM Cloud): -->
+- [ ] TXXX Run `terraform fmt` to format all .tf files
+- [ ] TXXX Run `terraform validate` across all configurations
+- [ ] TXXX [P] Run security scanning (Checkov, tfsec) on IaC code
+- [ ] TXXX [P] Run cost estimation (Infracost) for all environments
+- [ ] TXXX [P] Add outputs for key infrastructure values in iac/outputs.tf
+- [ ] TXXX [P] Add resource tags for cost tracking and management
+- [ ] TXXX [P] Generate architecture diagram from Terraform code
+- [ ] TXXX Document infrastructure in iac/README.md
+- [ ] TXXX Create deployment runbook in docs/deployment.md
+- [ ] TXXX Run `terraform plan` for dev environment
 - [ ] TXXX Run quickstart.md validation
+
+<!-- Pulumi Example (IBM Cloud):
+- [ ] TXXX Run `pulumi preview` for all stacks
+- [ ] TXXX [P] Run security scanning on IaC code
+- [ ] TXXX [P] Run cost estimation
+- [ ] TXXX [P] Add stack outputs for key infrastructure values
+- [ ] TXXX Document infrastructure in iac/README.md
+- [ ] TXXX Create deployment runbook
+- [ ] TXXX Run quickstart.md validation
+-->
 
 ---
 
@@ -164,89 +221,129 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: No dependencies - can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
-- **User Stories (Phase 3+)**: All depend on Foundational phase completion
-  - User stories can then proceed in parallel (if staffed)
-  - Or sequentially in priority order (P1 → P2 → P3)
-- **Polish (Final Phase)**: Depends on all desired user stories being complete
+**Infrastructure Projects - General Pattern:**
+- **Phase 1: Setup**: No dependencies - can start immediately
+- **Phase 2: Network Tier**: Depends on Setup - BLOCKS all compute/data resources
+- **Phase 3+: Resource Tiers**: Depend on Network Tier and possibly each other
+  - Organize additional phases by resource dependencies
+  - Number of phases varies by infrastructure complexity
+- **Phase N: Polish**: Depends on all infrastructure tiers being complete
 
-### User Story Dependencies
+**Common Infrastructure Dependency Pattern:**
+1. Setup (backend, provider, variables)
+2. Network (VPC, subnets, security groups, routing)
+3. Compute & Data (databases, storage, compute resources, load balancers)
+4. Application (DNS, monitoring, alerting, application config)
+5. Polish (validation, documentation, final checks)
 
-- **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
-- **User Story 2 (P2)**: Can start after Foundational (Phase 2) - May integrate with US1 but should be independently testable
-- **User Story 3 (P3)**: Can start after Foundational (Phase 2) - May integrate with US1/US2 but should be independently testable
+Note: Your infrastructure may need more or fewer phases depending on complexity
 
-### Within Each User Story
+### Infrastructure Task Sequencing Rules
 
-- Tests (if included) MUST be written and FAIL before implementation
-- Models before services
-- Services before endpoints
-- Core implementation before integration
-- Story complete before moving to next priority
+**Critical Dependencies:**
+- Network resources MUST complete before compute resources
+- Security groups MUST be defined before resources that reference them
+- IAM roles/policies MUST exist before resources that use them
+- VPC/subnets MUST exist before placing resources in them
+- Load balancers MUST exist before compute services register with them
+
+**Validation Checkpoints:**
+- Run `terraform validate` (or equivalent) after each tier completes
+- Run `terraform plan` before marking tier complete
+- Formatting checks (`terraform fmt`) in Polish phase
 
 ### Parallel Opportunities
 
-- All Setup tasks marked [P] can run in parallel
-- All Foundational tasks marked [P] can run in parallel (within Phase 2)
-- Once Foundational phase completes, all user stories can start in parallel (if team capacity allows)
-- All tests for a user story marked [P] can run in parallel
-- Models within a story marked [P] can run in parallel
-- Different user stories can be worked on in parallel by different team members
+**Within Same Tier:**
+- Resources within same tier can execute in parallel when marked [P]
+- Example: Multiple security groups, multiple subnets, multiple IAM policies
+- Variable file creation can happen in parallel with resource definitions
+- Documentation tasks can run in parallel during Polish phase
 
----
+**Across Environments:**
+- Different environments (dev/staging/prod) can be provisioned in parallel
+- Each environment follows same tier dependencies independently
 
-## Parallel Example: User Story 1
+**Independent Components:**
+- Separate VPCs or separate applications can execute in parallel
+- Unrelated infrastructure stacks can be deployed simultaneously
 
-```bash
-# Launch all tests for User Story 1 together (if tests requested):
-Task: "Contract test for [endpoint] in tests/contract/test_[name].py"
-Task: "Integration test for [user journey] in tests/integration/test_[name].py"
+### When Tasks CANNOT Be Parallel
 
-# Launch all models for User Story 1 together:
-Task: "Create [Entity1] model in src/models/[entity1].py"
-Task: "Create [Entity2] model in src/models/[entity2].py"
-```
+**CRITICAL: Tasks CANNOT run in parallel when:**
+
+1. **Same File Modification**:
+   - ❌ Two tasks both modifying `iac/vpc.tf`
+   - ✅ One task on `iac/vpc.tf`, another on `iac/security-groups.tf`
+
+2. **Resource Dependencies**:
+   - ❌ Creating compute instances BEFORE VPC exists
+   - ❌ Attaching security groups BEFORE they're defined
+   - ❌ Configuring load balancer pools BEFORE load balancer exists
+   - ✅ Creating multiple independent security groups (different files, no dependencies)
+
+3. **Cross-Tier Dependencies**:
+   - ❌ Any Compute/Data tier task running before Network tier completes
+   - ❌ Application tier DNS configuration before compute resources exist
+   - ✅ Within Network tier: subnets, security groups, IAM roles (if in different files)
+
+4. **Sequential Configuration**:
+   - ❌ Configuring database backups BEFORE database is created
+   - ❌ Attaching policies to IAM roles BEFORE roles exist
+   - ❌ Registering targets with load balancer BEFORE targets exist
+   - ✅ Creating multiple databases in parallel (if no dependencies between them)
+
+5. **Validation Checkpoints**:
+   - ❌ Starting next tier BEFORE validation checkpoint passes
+   - ❌ Running `terraform plan` BEFORE all tier resources defined
+   - ✅ Running validation commands in sequence at tier boundaries
+
+**Infrastructure-Specific Dependency Examples:**
+
+- **VPC → Subnets → Resources**: Must create VPC, then subnets, then place resources in subnets
+- **Security Groups → Compute**: Define security groups before launching instances that reference them
+- **IAM Roles → Resources**: Create IAM roles before resources that assume those roles
+- **Load Balancer → Pools → Targets**: Create LB, then pools, then register targets
+- **Network → Database**: Network infrastructure must exist before database placement
+- **Secrets Manager → Application**: Secrets must exist before applications reference them
+
+**Rule of Thumb**: If task B needs output/ID from task A, they CANNOT be parallel. Mark task B without [P] and ensure it comes after task A in the sequence.
 
 ---
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 Only)
+### Tier-by-Tier Code Generation
 
-1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
-3. Complete Phase 3: User Story 1
-4. **STOP and VALIDATE**: Test User Story 1 independently
-5. Deploy/demo if ready
+1. Complete Phase 1: Setup (create backend.tf, provider.tf, variables.tf)
+2. Complete Phase 2: Network Tier (create vpc.tf, security-groups.tf, etc.)
+3. **VALIDATE**: Run `terraform validate` to verify configuration syntax
+4. Complete Phase 3+: Additional tiers (create compute.tf, database.tf, etc.)
+5. **VALIDATE**: Run `terraform validate` after each tier
+6. Complete Phase N: Polish (formatting, documentation, outputs.tf)
+7. Final validation with `terraform validate` and `terraform plan`
 
-### Incremental Delivery
+**Note**: Implementation generates IaC code files only. Actual infrastructure deployment (terraform apply) is outside the scope of this framework.
 
-1. Complete Setup + Foundational → Foundation ready
-2. Add User Story 1 → Test independently → Deploy/Demo (MVP!)
-3. Add User Story 2 → Test independently → Deploy/Demo
-4. Add User Story 3 → Test independently → Deploy/Demo
-5. Each story adds value without breaking previous stories
+### Parallel Code Generation
 
-### Parallel Team Strategy
+When multiple team members work on IaC code:
 
-With multiple developers:
-
-1. Team completes Setup + Foundational together
-2. Once Foundational is done:
-   - Developer A: User Story 1
-   - Developer B: User Story 2
-   - Developer C: User Story 3
-3. Stories complete and integrate independently
+1. Complete Setup + Network together (foundation files)
+2. Once Network tier files complete, parallelize within tiers:
+   - Team member A: Database resource definitions
+   - Team member B: Compute resource definitions
+   - Team member C: Storage resource definitions
+3. Validate at tier boundaries before proceeding to next tier
 
 ---
 
 ## Notes
 
-- [P] tasks = different files, no dependencies
-- [Story] label maps task to specific user story for traceability
-- Each user story should be independently completable and testable
-- Verify tests fail before implementing
-- Commit after each task or logical group
-- Stop at any checkpoint to validate story independently
-- Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
+- [P] tasks = different files, no dependencies within same tier
+- Tasks organized by infrastructure tier following dependency hierarchy
+- Run `terraform validate` at tier boundaries to catch syntax errors early
+- Run `terraform plan` before marking major tiers complete
+- Commit after each tier or logical group of resources
+- Stop at checkpoints to validate configuration
+- Avoid: vague tasks, same file conflicts, violating tier dependencies

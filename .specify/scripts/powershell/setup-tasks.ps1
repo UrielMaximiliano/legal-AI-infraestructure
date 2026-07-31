@@ -3,63 +3,68 @@
 [CmdletBinding()]
 param(
     [switch]$Json,
-    [switch]$Help,
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$RemainingArgs
+    [switch]$Help
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Help wins over unknown-argument validation to match the Bash/Python
-# variants, which stop at --help and exit 0.
 if ($Help) {
     Write-Output "Usage: setup-tasks.ps1 [-Json] [-Help]"
     exit 0
 }
 
-if ($RemainingArgs.Count -gt 0) {
-    [Console]::Error.WriteLine("ERROR: Unknown option '$($RemainingArgs[0])'")
-    exit 1
-}
-
 # Source common functions
 . "$PSScriptRoot/common.ps1"
 
-# Get feature paths
-$paths = Get-FeaturePathsEnv -ReturnNullOnError
-if (-not $paths) {
-    [Console]::Error.WriteLine("ERROR: Failed to resolve feature paths")
-    exit 1
+# --- Stubs for functions not present in common.ps1 ---
+
+function Format-IacCommand {
+    param([string]$CommandName)
+    return "/iac.$CommandName"
 }
+
+function Resolve-IacTemplate {
+    param([string]$TemplateName, [string]$RepoRoot)
+    $templatePath = Join-Path $RepoRoot ".specify/templates/$TemplateName.md"
+    if (Test-Path -LiteralPath $templatePath -PathType Leaf) {
+        return $templatePath
+    }
+    return $null
+}
+
+# --- End stubs ---
+
+# Get feature paths
+$paths = Get-FeaturePathsEnv
 
 if (-not (Test-Path $paths.IMPL_PLAN -PathType Leaf)) {
     [Console]::Error.WriteLine("ERROR: plan.md not found in $($paths.FEATURE_DIR)")
-    $planCommand = '/speckit.plan'
+    $planCommand = Format-IacCommand -CommandName 'plan'
     [Console]::Error.WriteLine("Run $planCommand first to create the implementation plan.")
     exit 1
 }
 
 if (-not (Test-Path $paths.FEATURE_SPEC -PathType Leaf)) {
     [Console]::Error.WriteLine("ERROR: spec.md not found in $($paths.FEATURE_DIR)")
-    $specifyCommand = '/speckit.specify'
+    $specifyCommand = Format-IacCommand -CommandName 'specify'
     [Console]::Error.WriteLine("Run $specifyCommand first to create the feature structure.")
     exit 1
 }
 
-# Build available docs list
+# Build available docs list (uses path fields from this project's Get-FeaturePathsEnv)
 $docs = @()
-if (Test-Path $paths.RESEARCH) { $docs += 'research.md' }
-if (Test-Path $paths.DATA_MODEL) { $docs += 'data-model.md' }
-if ((Test-Path $paths.CONTRACTS_DIR) -and (Get-ChildItem -Path $paths.CONTRACTS_DIR -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-    $docs += 'contracts/'
-}
-if (Test-Path $paths.QUICKSTART) { $docs += 'quickstart.md' }
+if (Test-Path $paths.RESEARCH)     { $docs += 'research.md' }
+if (Test-Path $paths.MODULES)      { $docs += 'modules.md' }
+if (Test-Path $paths.ARCHITECTURE) { $docs += 'architecture.md' }
+if (Test-Path $paths.QUICKSTART)   { $docs += 'quickstart.md' }
 
-# Resolve tasks template through override stack
-$tasksTemplate = Resolve-Template -TemplateName 'tasks-template' -RepoRoot $paths.REPO_ROOT
+# Resolve tasks template
+$tasksTemplate = Resolve-IacTemplate -TemplateName 'tasks-template' -RepoRoot $paths.REPO_ROOT
 if (-not $tasksTemplate -or -not (Test-Path -LiteralPath $tasksTemplate -PathType Leaf)) {
-    [Console]::Error.WriteLine("ERROR: Could not resolve required tasks-template from the template override stack for $($paths.REPO_ROOT)")
-    [Console]::Error.WriteLine("Template 'tasks-template' was not found in any supported location (overrides, presets, extensions, or shared core). Add an override at .specify/templates/overrides/tasks-template.md, or run 'specify init' / reinstall shared infra to restore the core .specify/templates/tasks-template.md template.")
+    $expectedCoreTemplate = Join-Path $paths.REPO_ROOT '.specify/templates/tasks-template.md'
+    [Console]::Error.WriteLine("ERROR: Tasks template not found for repository root: $($paths.REPO_ROOT)")
+    [Console]::Error.WriteLine("Expected template location: $expectedCoreTemplate")
+    [Console]::Error.WriteLine("Add an override at .specify/templates/overrides/tasks-template.md, or restore .specify/templates/tasks-template.md.")
     exit 1
 }
 $tasksTemplate = (Resolve-Path -LiteralPath $tasksTemplate).Path
@@ -75,8 +80,8 @@ if ($Json) {
     Write-Output "FEATURE_DIR: $($paths.FEATURE_DIR)"
     Write-Output "TASKS_TEMPLATE: $(if ($tasksTemplate) { $tasksTemplate } else { 'not found' })"
     Write-Output "AVAILABLE_DOCS:"
-    Test-FileExists -Path $paths.RESEARCH -Description 'research.md' | Out-Null
-    Test-FileExists -Path $paths.DATA_MODEL -Description 'data-model.md' | Out-Null
-    Test-DirHasFiles -Path $paths.CONTRACTS_DIR -Description 'contracts/' | Out-Null
-    Test-FileExists -Path $paths.QUICKSTART -Description 'quickstart.md' | Out-Null
+    Test-FileExists -Path $paths.RESEARCH     -Description 'research.md'     | Out-Null
+    Test-FileExists -Path $paths.MODULES      -Description 'modules.md'      | Out-Null
+    Test-FileExists -Path $paths.ARCHITECTURE -Description 'architecture.md' | Out-Null
+    Test-FileExists -Path $paths.QUICKSTART   -Description 'quickstart.md'   | Out-Null
 }

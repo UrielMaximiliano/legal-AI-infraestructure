@@ -1,0 +1,296 @@
+---
+description: Create or update the infrastructure specification from a natural language infrastructure description.
+handoffs:
+  - label: Build Technical Plan
+    agent: iac.plan
+    prompt: Create a plan for the spec. I am building with...
+  - label: Clarify Spec Requirements
+    agent: iac.clarify
+    prompt: Clarify specification requirements
+    send: true
+---
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+You **MUST** consider the user input before proceeding (if not empty).
+
+## Pre-Execution Checks
+
+**Check for extension hooks (before specification)**:
+
+- Check if `.specify/extensions.yml` exists in the project root.
+- If it exists, read it and look for entries under the `hooks.before_iac_specify` key
+- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
+- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
+- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
+  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
+  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
+- For each executable hook, output the following based on its `optional` flag:
+  - **Optional hook** (`optional: true`):
+
+    ```text
+    ## Extension Hooks
+
+    **Optional Pre-Hook**: {extension}
+    Command: `/{command}`
+    Description: {description}
+
+    Prompt: {prompt}
+    To execute: `/{command}`
+    ```
+
+  - **Mandatory hook** (`optional: false`):
+
+    ```text
+    ## Extension Hooks
+
+    **Automatic Pre-Hook**: {extension}
+    Executing: `/{command}`
+    EXECUTE_COMMAND: {command}
+
+    Wait for the result of the hook command before proceeding to the Outline.
+    ```
+    After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
+
+- If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+
+## Outline
+
+The text the user typed after `/iac.specify` in the triggering message **is** the infrastructure description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
+
+Given that infrastructure description, do this:
+
+1. **Generate a concise short name** (2-4 words) for the branch:
+   - Analyze the infrastructure description and extract the most meaningful keywords
+   - Create a 2-4 word short name that captures the essence of the infrastructure
+   - Use action-noun format when possible (e.g., "deploy-vpc", "configure-database")
+   - Preserve technical terms and acronyms (VPC, RDS, K8s, etc.)
+   - Keep it concise but descriptive enough to understand the infrastructure at a glance
+   - Examples:
+     - "Deploy production VPC with public and private subnets" → "production-vpc"
+     - "Set up auto-scaling compute cluster with load balancing" → "autoscaling-compute"
+     - "Configure managed database with automated backups" → "managed-database"
+     - "Implement multi-region disaster recovery" → "multi-region-dr"
+
+2. **Check for existing branches before creating new one**:
+   
+   a. First, fetch all remote branches to ensure we have the latest information:
+      ```bash
+      git fetch --all --prune
+      ```
+   
+   b. Find the highest infrastructure number across all sources for the short-name:
+      - Remote branches: `git ls-remote --heads origin | grep -E 'refs/heads/[0-9]+-<short-name>$'`
+      - Local branches: `git branch | grep -E '^[* ]*[0-9]+-<short-name>$'`
+      - Specs directories: Check for directories matching `specs/[0-9]+-<short-name>`
+   
+   c. Determine the next available number:
+      - Extract all numbers from all three sources
+      - Find the highest number N
+      - Use N+1 for the new branch number
+   
+   d. Run the script `.specify/scripts/powershell/create-new-feature.ps1 -Json "$ARGUMENTS"` with the calculated number and short-name:
+      - Pass `--number N+1` and `--short-name "your-short-name"` along with the infrastructure description
+      - Bash example: `.specify/scripts/powershell/create-new-feature.ps1 -Json "$ARGUMENTS" --json --number 5 --short-name "production-vpc" "Deploy production VPC with public and private subnets"`
+      - PowerShell example: `.specify/scripts/powershell/create-new-feature.ps1 -Json "$ARGUMENTS" -Json -Number 5 -ShortName "production-vpc" "Deploy production VPC with public and private subnets"`
+   
+   **IMPORTANT**:
+   - Check all three sources (remote branches, local branches, specs directories) to find the highest number
+   - Only match branches/directories with the exact short-name pattern
+   - If no existing branches/directories found with this short-name, start with number 1
+   - You must only ever run this script once per infrastructure component
+   - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
+   - The JSON output will contain BRANCH_NAME and SPEC_FILE paths
+   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot")
+
+3. Load `.specify/templates/spec-template.md` to understand required sections.
+
+4. Follow this execution flow:
+
+    1. Parse user description from Input
+       If empty: ERROR "No infrastructure description provided"
+    2. Extract key concepts from description
+       Identify: infrastructure components, capabilities, requirements, constraints
+    3. For unclear aspects:
+       - Make informed guesses based on context and industry standards
+       - Only mark with [NEEDS CLARIFICATION: specific question] if:
+         - The choice significantly impacts infrastructure scope or requirements
+         - Multiple reasonable interpretations exist with different implications
+         - No reasonable default exists
+       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
+       - Prioritize clarifications by impact: scope > security/compliance > cost > technical details
+    4. Fill Infrastructure Requirements section
+       If no clear infrastructure capabilities: ERROR "Cannot determine infrastructure requirements"
+    5. Generate Functional Requirements
+       Each requirement must be testable
+       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
+    6. Define Success Criteria
+       Create measurable outcomes using generic infrastructure terms
+       Include both quantitative metrics (SLOs, cost, capacity) and qualitative measures (compliance, operational readiness)
+       Each criterion must be verifiable without cloud-specific service names
+    7. Document Cost Constraints and Compliance Requirements (if applicable)
+    8. Return: SUCCESS (spec ready for planning)
+
+5. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the infrastructure description (arguments) while preserving section order and headings.
+
+6. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
+
+   a. **Create Spec Quality Checklist**: Generate a checklist file at `INFRA_DIR/checklists/requirements.md` using the checklist template structure with these validation items:
+
+      ```markdown
+      # Specification Quality Checklist: [INFRASTRUCTURE NAME]
+
+      **Purpose**: Validate specification completeness and quality before proceeding to planning
+      **Created**: [DATE]
+      **Infrastructure**: [Link to spec.md]
+      
+      ## Content Quality
+
+      - [ ] No implementation details (cloud providers, specific tools)
+      - [ ] Focused on infrastructure capabilities and business needs
+      - [ ] Written for both technical and non-technical stakeholders
+      - [ ] All mandatory sections completed
+
+      ## Requirement Completeness
+
+      - [ ] No [NEEDS CLARIFICATION] markers remain
+      - [ ] Requirements are testable and unambiguous
+      - [ ] Success criteria are measurable
+      - [ ] Success criteria use generic infrastructure terms (no cloud-specific service names)
+      - [ ] SLOs are clearly defined with measurement methods
+      - [ ] Cost constraints are documented
+      - [ ] Compliance requirements identified (if applicable)
+      - [ ] Scope is clearly bounded
+      - [ ] Dependencies and assumptions identified
+
+      ## Infrastructure Readiness
+
+      - [ ] All functional requirements have clear success criteria
+      - [ ] Non-functional requirements (performance, availability, security, scalability) defined
+      - [ ] Infrastructure meets measurable outcomes defined in Success Criteria
+      - [ ] No implementation details leak into specification
+
+      ## Notes
+
+      - Items marked incomplete require spec updates before `/iac.plan`
+      ```
+
+   b. **Run Validation Check**: Review the spec against each checklist item:
+      - For each item, determine if it passes or fails
+      - Document specific issues found (quote relevant spec sections)
+
+   c. **Handle Validation Results**:
+
+      - **If all items pass**: Mark checklist complete and proceed to step 6
+
+      - **If items fail (excluding [NEEDS CLARIFICATION])**:
+        1. List the failing items and specific issues
+        2. Update the spec to address each issue
+        3. Re-run validation until all items pass (max 3 iterations)
+        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+
+      - **If [NEEDS CLARIFICATION] markers remain**:
+        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
+        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/operational impact) and make informed guesses for the rest
+        3. For each clarification needed (max 3), present options to user in this format:
+
+           ```markdown
+           ## Question [N]: [Topic]
+           
+           **Context**: [Quote relevant spec section]
+           
+           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
+           
+           **Suggested Answers**:
+           
+           | Option | Answer | Implications |
+           |--------|--------|--------------|
+           | A      | [First suggested answer] | [What this means for the infrastructure] |
+           | B      | [Second suggested answer] | [What this means for the infrastructure] |
+           | C      | [Third suggested answer] | [What this means for the infrastructure] |
+           | Custom | Provide your own answer | [Explain how to provide custom input] |
+           
+           **Your choice**: _[Wait for user response]_
+           ```
+
+        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
+           - Use consistent spacing with pipes aligned
+           - Each cell should have spaces around content: `| Content |` not `|Content|`
+           - Header separator must have at least 3 dashes: `|--------|`
+           - Test that the table renders correctly in markdown preview
+        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
+        6. Present all questions together before waiting for responses
+        7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
+        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
+        9. Re-run validation after all clarifications are resolved
+
+   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
+
+7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/iac.plan`).
+
+**NOTE:** The script creates and checks out the new branch and initializes the spec file before writing.
+
+## General Guidelines
+
+## Quick Guidelines
+
+- Focus on **WHAT** infrastructure is needed and **WHY**.
+- **CRITICAL: Use ONLY generic infrastructure terms** - NO cloud-specific service names:
+  - ✅ "managed database service" NOT ❌ "RDS", "Cloud SQL", "Azure Database"
+  - ✅ "object storage" NOT ❌ "S3", "Azure Blob", "Cloud Storage"
+  - ✅ "serverless compute" NOT ❌ "Lambda", "Cloud Functions", "Azure Functions"
+  - ✅ "container orchestration" NOT ❌ "EKS", "AKS", "GKE"
+  - ✅ "load balancer" NOT ❌ "ALB", "Application Gateway", "Cloud Load Balancing"
+  - ✅ "content delivery network" NOT ❌ "CloudFront", "Azure CDN", "Cloud CDN"
+  - ✅ "managed relational database" NOT ❌ "RDS", "Azure SQL Database", "Cloud SQL"
+  - ✅ "virtual private network" NOT ❌ "VPC", "VNet", "Virtual Network"
+- Avoid HOW to implement (no cloud providers, specific tools, IaC syntax).
+- Written for both infrastructure and business stakeholders.
+- DO NOT create any checklists that are embedded in the spec. That will be a separate command.
+
+### Section Requirements
+
+- **Mandatory sections**: Must be completed for every infrastructure specification
+- **Optional sections**: Include only when relevant to the infrastructure
+- When a section doesn't apply, remove it entirely (don't leave as "N/A")
+
+### For AI Generation
+
+When creating this spec from a user prompt:
+
+1. **Make informed guesses**: Use context, industry standards, and common cloud patterns to fill gaps
+2. **Document assumptions**: Record reasonable defaults in the Assumptions section
+3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
+   - Significantly impact infrastructure scope or requirements
+   - Have multiple reasonable interpretations with different implications
+   - Lack any reasonable default
+4. **Prioritize clarifications**: scope > security/compliance > cost > technical details
+5. **Think like an infrastructure engineer**: Every vague requirement should fail the "testable and unambiguous" checklist item
+6. **Common areas needing clarification** (only if no reasonable default exists):
+   - Infrastructure scope and boundaries (include/exclude specific components)
+   - Security and compliance requirements (when legally/financially significant)
+   - Cost constraints and budget limits (when significantly impacting design)
+
+**Examples of reasonable defaults** (don't ask about these):
+
+- Environment type: Infer from context (dev, staging, prod) and adjust requirements accordingly
+- Availability targets: Match to environment purpose (dev: lower SLOs acceptable, prod: higher requirements)
+- Backup frequency: Align with data criticality and environment (dev: daily, prod: hourly/continuous)
+- Multi-region: Only assume if explicitly mentioned or clearly needed for compliance/DR
+- Scaling approach: Start with simple fixed capacity unless high traffic mentioned
+
+### Success Criteria Guidelines
+
+Follow the detailed guidance in the Success Criteria section of `.specify/templates/spec-template.md`.
+
+**Key reminders:**
+- Use generic infrastructure terms (no cloud-specific service names like "RDS", "S3", "Lambda")
+- Focus on measurable outcomes (time, percentage, count, rate)
+- Describe from business/operational perspective, not system internals
+- Must be verifiable without knowing implementation details
+
+The spec template provides complete examples of good vs bad success criteria.
