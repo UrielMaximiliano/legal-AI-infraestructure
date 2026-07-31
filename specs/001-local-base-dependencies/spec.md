@@ -15,6 +15,11 @@ cada dependencia individualmente. Todo el alcance se limita a la validación
 local del desarrollo. No se incluye RAG, embeddings, corpus, generación
 jurídica, frontend, Redis, Kubernetes, Terraform ni Helm.
 
+**Declaración de alcance**: Este incremento no procesa ni genera contenido
+jurídico. La revisión humana obligatoria (Principio II de la constitución)
+aplicará a capacidades jurídicas futuras. No se cargan datos reales en
+este incremento.
+
 ## Declaración del Problema
 
 ### Estado Actual
@@ -102,6 +107,9 @@ Estados individuales permitidos:
 - `misconfigured`
 - `invalid_response`
 - `missing`
+- `unauthorized`
+- `forbidden`
+- `rate_limited`
 
 La ausencia de pgvector debe representarse como `"status": "missing"`.
 
@@ -212,12 +220,15 @@ que la extensión vector está instalada.
 ### RF-005 — Estado de Ollama
 
 El sistema DEBE comprobar que el endpoint configurado de Ollama sea accesible.
-La comprobación DEBE utilizar una operación liviana (como consultar información
-del servicio o modelos disponibles) y NO DEBE ejecutar generación ni embeddings.
-DEBE informar: disponible, no disponible, timeout, respuesta inválida, error
-de configuración. NO DEBE exponer datos sensibles del endpoint ni detalles
-internos innecesarios. No se fija un endpoint interno concreto de Ollama;
-eso corresponde al plan técnico según la API disponible.
+La comprobación DEBE utilizar `GET {OLLAMA_BASE_URL}/api/version` como
+operación liviana y NO DEBE ejecutar generación ni embeddings. La solicitud
+DEBE incluir header `Authorization: Bearer <OLLAMA_API_TOKEN>`. La respuesta
+válida DEBE tener HTTP 2xx, ser JSON y contener un campo `version` como
+string no vacío. DEBE informar: disponible, no disponible, timeout, respuesta
+inválida, error de configuración, no autorizado, prohibido, límite de tasa.
+NO DEBE exponer el token en errores ni respuestas. No se fija un endpoint
+interno concreto de Ollama más allá de `api/version`; eso corresponde al
+plan técnico según la API disponible.
 
 ### RF-006 — Estado Agregado de Dependencias
 
@@ -256,13 +267,25 @@ La aplicación DEBE poder configurarse mediante variables de entorno. DEBE
 existir un archivo de ejemplo (`.env.example`) que documente las variables
 requeridas sin incluir valores secretos reales. Como mínimo deben
 contemplarse: entorno de ejecución, host y puerto de la API, configuración
-de PostgreSQL, endpoint de Ollama, timeout de Ollama, nivel de logging,
-versión de build.
+de PostgreSQL, endpoint de Ollama, token de autenticación de Ollama, timeout
+de Ollama, nivel de logging, versión de build.
+
+`OLLAMA_BASE_URL` es obligatoria y no tiene valor por defecto. Debe aceptar
+una URL base que pueda incluir un prefijo de path (ej.
+`https://example.internal/ollama`). El cliente debe construir la URL completa
+del health check concatenando `/api/version` sin perder el prefijo ni
+duplicar barras.
+
+`OLLAMA_API_TOKEN` es obligatorio y debe llegar mediante variable de entorno
+o secret del orquestador. No debe incluirse en imágenes Docker, no debe
+aparecer en `.env.example` salvo como placeholder, no debe registrarse en
+logs ni devolverse en errores. Debe poder rotarse sin modificar código.
 
 El timeout de Ollama se configura mediante `OLLAMA_TIMEOUT_SECONDS` con
 valor por defecto de 5 segundos. Restricciones: valor mayor que 0, valor
 máximo permitido de 30 segundos para health checks, configuración inválida
-detectada mediante validación.
+detectada mediante validación. Este timeout corresponde únicamente a health
+checks, no a futuras operaciones de generación u OCR.
 
 ### RF-008 — Inicio Local Reproducible
 
@@ -329,8 +352,10 @@ ejecutarse automáticamente de manera silenciosa cada vez que inicia la API.
 - NO enviar información jurídica ni personal a Ollama en esta capacidad.
 - NO exponer PostgreSQL públicamente.
 - NO exponer Ollama directamente mediante la API.
-- NO exponer `OLLAMA_BASE_URL`, `DATABASE_URL`, hostnames internos
-  completos, credenciales ni stack traces en ningún endpoint.
+- NO exponer `OLLAMA_BASE_URL`, `OLLAMA_API_TOKEN`, `DATABASE_URL`,
+  hostnames internos completos, credenciales ni stack traces en ningún endpoint.
+- `OLLAMA_API_TOKEN` NO debe incluirse en imágenes Docker.
+- `OLLAMA_API_TOKEN` debe poder rotarse sin modificar código.
 
 ### Privacidad (RNF-002)
 
@@ -514,10 +539,15 @@ Las respuestas de error deben usar códigos estables, no depender
 
 ## Alcance Excluido
 
+Las siguientes capacidades están **excluidas explícitamente** de este
+incremento y no deben generar código ni tareas:
+
 - Carga de documentos y corpus jurídico
 - Parsing jurídico y chunking
 - Embeddings y búsqueda semántica
 - RAG y generación de decretos
+- Generación de contenido jurídico
+- OCR (reconocimiento óptico de caracteres)
 - Prompts jurídicos
 - Redis
 - Colas y workers funcionales

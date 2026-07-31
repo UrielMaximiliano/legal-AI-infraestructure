@@ -1,10 +1,10 @@
 # Legal-AI-Infraestructure IaC Principles
 
 <!-- Sync Impact Report -->
-<!-- Version change: N/A → 1.0.0 (initial adoption) -->
-<!-- Modified principles: N/A (initial creation) -->
-<!-- Added sections: Architecture (4), Code (24), Approaches (2), Governance -->
-<!-- Removed sections: N/A -->
+<!-- Version change: 1.0.0 → 1.1.0 (amendment for Ollama integration) -->
+<!-- Modified principles: Ollama as External Dependency → replaced by 11 Ollama-specific principles -->
+<!-- Added sections: Ollama Secrets, Configurable Endpoints, Ollama Networking, Probes, Capacity and Concurrency, Timeouts, OCR and Payload Size, Model and GPU, Blocked Endpoints, Future Deployment -->
+<!-- Removed sections: Ollama as External Dependency (replaced) -->
 <!-- Deferred items: None -->
 <!-- End Sync Impact Report -->
 
@@ -225,9 +225,11 @@ resources when that exposes the secret in state. For the MVP, prefer SOPS
 with age or Sealed Secrets. Do not introduce Vault unless it already exists
 or a clear need justifies it. Terraform must manage references and permissions,
 not necessarily secret values. Secrets must be separated per environment.
-Credentials for PostgreSQL, Redis, registry, TLS, and tokens must be rotatable
-without rebuilding infrastructure. Private decryption keys must stay out of
-Git. Secrets must not appear in logs, plans, outputs, or documentation.
+Credentials for PostgreSQL, Redis, registry, TLS, and Ollama tokens must be
+rotatable without rebuilding infrastructure. Private decryption keys must stay
+out of Git. Secrets must not appear in logs, plans, outputs, or documentation.
+Ollama tokens must be managed as high-sensitivity secrets with independent
+per-environment values. See Ollama Secrets principle for specific requirements.
 
 **Why it matters**: Secrets in Git are accessible to anyone with repository
 access. Secrets in Terraform state are exposed during `terraform plan` output.
@@ -235,7 +237,7 @@ Both create security vulnerabilities.
 
 **How to apply**: Use SOPS-encrypted files or Sealed Secrets. Mark Terraform
 outputs containing references as `sensitive = true`. Never print plan output
-containing secret values in CI logs.
+containing secret values in CI logs. Use `secretKeyRef` for Ollama tokens.
 
 ### Networking and Network Isolation
 
@@ -248,36 +250,227 @@ Ingress must expose only required endpoints. All user traffic must use HTTPS.
 Domain and certificates must be configurable. API, PostgreSQL, Redis, and
 Ollama must not be directly exposed to the internet. Internal services must
 use ClusterIP. Egress must be restricted to required destinations when viable.
+When NetworkPolicy supports egress control by IP or CIDR, Ollama egress must
+be restricted to the authorized endpoint. When the endpoint depends on external
+DNS, document NetworkPolicy limitations. Maintain HTTPS and TLS validation
+for all Ollama communication.
 
 **Why it matters**: Legal documents and personal data traverse the network.
 Unrestricted network access means a compromised frontend could directly
-access the database.
+access the database or exfiltrate data through unauthorized outbound
+connections.
 
 **How to apply**: Define NetworkPolicy resources in Terraform. Use Helm values
 to configure service types. Verify with `kubectl get networkpolicies` after
-deployment.
+deployment. Define egress rules for Ollama endpoints in Terraform.
 
-### Ollama as External Dependency
+### Ollama Secrets
 
-Ollama is a shared external dependency. Its endpoint must be configurable via
-`OLLAMA_BASE_URL`. Terraform must not manage Ollama. Helm must not deploy
-Ollama. Infrastructure must allow changing the endpoint without rebuilding
-images. Timeouts, health checks, and connectivity tests must exist. An Ollama
-failure must not prevent the API from exposing differentiated health checks.
-The application must tolerate temporary Ollama unavailability without data
-corruption. Mass ingestion must not monopolize shared capacity. Workers must
-have configurable concurrency. Interactive requests must be prioritizable over
-batch jobs. No exclusive GPU access must be assumed. Models must not be loaded
-or unloaded without coordination with shared infrastructure. The project must
-record the model name used but not manage its global lifecycle.
+The Ollama token must be treated as a high-sensitivity secret. It must not
+be stored in Git, versioned tfvars, or Helm values. Terraform and Helm must
+manage references to the secret, not its value. The secret must be injected
+into backend and workers via Kubernetes Secret. The frontend must never
+receive it. Rotation must be possible without rebuilding images. Logs,
+events, probes, and errors must not expose it. Environments must use
+independent secrets. Development and production tokens must not be reused.
 
-**Why it matters**: Ollama is shared across projects. If this project's
-ingestion saturates Ollama, other projects suffer. If Ollama goes down,
-this project must degrade gracefully, not crash.
+**Why it matters**: The Ollama token grants access to a shared inference
+service. Exposure enables unauthorized use, data leakage, and potential
+abuse of a resource shared across projects.
 
-**How to apply**: Configure `OLLAMA_BASE_URL` as environment variable. Implement
-circuit breaker or timeout in the Ollama client adapter. Set worker concurrency
-limits. Log Ollama connectivity status in health checks.
+**How to apply**: Store token in Kubernetes Secret. Reference via
+`secretKeyRef` in Helm values. Mark Terraform outputs as `sensitive`.
+Sanitize HTTPX exceptions to never include token. Use mock tokens in tests.
+
+### Configurable Endpoints
+
+Maintain independent variables or secret references for: `OLLAMA_BASE_URL`,
+`OLLAMA_API_TOKEN`, future `OLLAMA_VISION_BASE_URL`, future
+`OLLAMA_VISION_API_TOKEN`. Never hardcode domain, path, IP, port, token,
+model, or hardware. URLs may include prefixes such as `/ollama` or
+`/ollama-vision`. The application must construct relative endpoints without
+duplicating or incorrectly stripping those prefixes. Trailing slashes must
+be normalized. HTTPS must be required in production; HTTP permitted only in
+development or test environments.
+
+**Why it matters**: Hardcoded endpoints create coupling between environments.
+A URL that works in development may not work in staging or production.
+Prefix mismanagement leads to double slashes or missing path segments.
+
+**How to apply**: Use `pydantic-settings` for typed validation. Validate
+URL scheme against `APP_ENV`. Normalize trailing slashes before constructing
+health check URLs. Document all variables in `.env.example` with placeholders.
+
+### Ollama Networking
+
+Allow egress only from API and workers to the authorized Ollama endpoints.
+The frontend must not access Ollama directly. PostgreSQL and Redis must not
+access Ollama. When NetworkPolicy supports egress control by IP or CIDR,
+restrict to the corresponding destination. When the endpoint depends on
+external or dynamic DNS, document NetworkPolicy limitations. Maintain HTTPS
+and TLS validation. Never use `verify=False`. Additional certificates or CA,
+if necessary, must be mounted in a controlled manner and versioned without
+including private keys.
+
+**Why it matters**: Legal documents and personal data traverse the network.
+Unrestricted egress means a compromised pod could exfiltrate data through
+any outbound connection, including to unauthorized Ollama endpoints.
+
+**How to apply**: Define NetworkPolicy egress rules in Terraform. Use
+Helm values to configure Ollama endpoints. Verify with
+`kubectl get networkpolicies` after deployment.
+
+### Probes
+
+Kubernetes probes must not execute inference. The liveness probe must not
+consult Ollama. Readiness may use application-calculated state. Probes must
+not contain the token directly in command, args, URL, or visible events. Do
+not use a Kubernetes HTTP probe directly against Ollama with embedded
+Authorization. The API must perform the authenticated check internally and
+expose the result through its own health endpoints.
+
+**Why it matters**: Embedding tokens in probe definitions exposes secrets
+in Kubernetes event logs, `kubectl describe` output, and monitoring dashboards.
+Probes that call Ollama directly bypass authentication controls and may
+trigger unintended inference.
+
+**How to apply**: Use `exec` or `httpGet` probes against the API's own
+health endpoints. Let the API perform authenticated Ollama checks internally.
+Store probe configuration in Helm values without secrets.
+
+### Capacity and Concurrency
+
+The infrastructure must recognize that Ollama has: a single active inference
+slot, a single loaded model simultaneously, a 300-second maximum inference
+timeout, a rate limit of 10 requests per second, and a burst of 20.
+Therefore: workers must have configurable concurrency, initial inference
+concurrency must be 1, batch requests must not saturate the service,
+interactive requests must have priority, backpressure must exist, HTTP 429
+must not trigger aggressive retries, HTTP 504 must not be retried
+immediately, internal limits must be more conservative than the proxy limit,
+horizontal scaling must consider the single-slot bottleneck, and increasing
+worker replicas must not be assumed to increase GPU parallelism.
+
+**Why it matters**: A single-slot inference service is a hard bottleneck.
+Without backpressure and concurrency control, burst traffic from ingestion
+or batch jobs can starve interactive users and degrade response quality.
+
+**How to apply**: Set worker concurrency to 1 initially. Implement
+backpressure in the application layer. Use a queue or semaphore for batch
+operations. Monitor slot utilization via Ollama metrics.
+
+### Timeouts
+
+Differentiate: health check (short timeout, initially 5 seconds), generation
+(up to 300 seconds per operation), OCR (up to 300 seconds per operation),
+model loading or warmup (may take several minutes). Timeouts must be
+configurable per operation type. Do not use a single global timeout for all
+operations. Ingress, internal proxy, API, and HTTP client must have coherent
+timeouts. Do not increase infrastructure timeouts without limits.
+
+**Why it matters**: Using a single timeout for health checks and inference
+creates false positives or false negatives. A 5-second timeout is appropriate
+for health checks but will always fail for inference operations that take
+minutes.
+
+**How to apply**: Define separate timeout variables per operation type.
+Configure `httpx.Timeout` independently for health checks and inference.
+Set Ingress proxy timeouts to match or exceed API timeouts.
+
+### OCR and Payload Size
+
+For the future vision API: images will be sent as Base64; Base64 increases
+size by approximately 33%; request body limits must be set in API and Ingress;
+do not blindly inherit the absence of limits from the external Nginx; start
+with one image per request; limit dimensions, format, and size; avoid
+maintaining multiple large copies of the payload in memory; define memory
+requests and limits based on testing; process OCR sequentially during initial
+evaluation; do not allow direct upload from frontend to Ollama; the API must
+validate and control the payload before sending.
+
+**Why it matters**: Base64-encoded images can be large. Without limits,
+a single request could exhaust API memory or exceed proxy body size limits.
+Direct frontend-to-Ollama upload bypasses authentication and validation.
+
+**How to apply**: Configure Ingress `client_max_body_size`. Validate
+payload size in API before forwarding. Set memory limits in Helm values.
+Log payload size metrics for capacity planning.
+
+### On-Premise Observability
+
+All components must produce structured logs. Logs must not contain personal
+data, full documents, full prompts, secrets, tokens, Base64 images,
+Authorization headers, or complete legal responses in infrastructure logs.
+Metrics must be exposed when Prometheus support exists. At minimum, measure:
+latency per operation, HTTP codes, timeouts, 401 and 403 responses, 429
+responses, 502 and 504 responses, payload size, queue time, active
+requests, requested model, operation type (health, chat, generate,
+embeddings, or OCR). Integrate with Prometheus, Grafana, and Loki if they
+already exist in the cluster. If they do not exist, start with Kubernetes
+logs, basic metrics, and health checks. Do not deploy a full observability
+platform before validating the MVP. Observability must be incorporable
+without modifying business logic. Dashboards and alerts must be versioned
+when incorporated.
+
+**Why it matters**: On-premise means no cloud monitoring dashboard. Without
+observability, problems are invisible until users complain. Sensitive data
+in logs creates compliance and security risks.
+
+**How to apply**: Use structured JSON logging. Sanitize all log outputs.
+Add Prometheus metrics endpoint. Start with `kubectl logs` and health
+check endpoints. Add ServiceMonitor when available.
+
+### Model and GPU
+
+The current model (qwen3.6:35b) must be configuration, not hardcoded
+dependency. The application must not manage model loading or unloading.
+Terraform and Helm must not manage the RTX 5090. Terraform and Helm must
+not manage Ollama. The project must consume the service exclusively via
+HTTPS. A model change must not require infrastructure changes. The
+infrastructure must not request GPU resources for API or workers if they
+only consume Ollama remotely. High availability must not be claimed: there
+is a single server and a single inference slot.
+
+**Why it matters**: GPU and model management are the responsibility of the
+shared Ollama infrastructure. If this project assumes GPU ownership, it
+creates conflicts with other projects sharing the same hardware and
+introduces operational complexity beyond the team's capacity.
+
+**How to apply**: Configure model name via environment variable. Do not
+define GPU resources in Helm values for API or workers. Document model
+configuration in operational runbook.
+
+### Blocked Endpoints
+
+The application must not depend on: `/api/pull`, `/api/delete`,
+`/api/copy`, `/api/push`. Terraform, Helm, jobs, and operational scripts
+must not attempt to manage models through those endpoints. Model
+availability is the responsibility of the external Ollama infrastructure.
+
+**Why it matters**: Using model management endpoints creates implicit
+dependency on Ollama admin access and couples infrastructure lifecycle
+to application deployment. These endpoints may not be available through
+the Nginx proxy or may require different authentication.
+
+**How to apply**: Document blocked endpoints in operational documentation.
+Verify health check endpoint is the only Ollama endpoint used in the
+first increment. Add linting rules to prevent accidental usage.
+
+### Future Deployment
+
+Maintain this sequence: (1) authenticated health check, (2) controlled
+text generation, (3) embeddings, (4) queue and backpressure evaluation,
+(5) OCR with strict limits, (6) observability, (7) concurrency tuning
+based on measurements. Do not implement OCR infrastructure in the first
+increment. Each capability must be validated before adding the next.
+
+**Why it matters**: Jumping to advanced capabilities before validating
+the foundation creates compounding risks. Each layer depends on the
+previous one being stable and well-understood.
+
+**How to apply**: Follow the prescribed order in specifications and
+plans. Document each capability's prerequisites before implementation.
+Stop at validation checkpoints between capabilities.
 
 ### Server Resources and Capacity
 
@@ -603,11 +796,14 @@ principle amendments.
 and requirements change. Amendments follow semantic versioning (MAJOR for
 breaking changes, MINOR for new principles, PATCH for clarifications),
 require stakeholder review, and include migration guidance when impacting
-existing infrastructure.
+existing infrastructure. The most recent amendment (2026-07-31) added 11
+principles governing Ollama integration: secrets, configurable endpoints,
+networking, probes, capacity and concurrency, timeouts, OCR and payload
+size, observability, model and GPU, blocked endpoints, and future deployment.
 
 **Relationship to Functional Constitution**: These IaC principles establish
 infrastructure WHAT and WHY. The functional constitution (GitHub Spec Kit)
 governs application behavior. They must remain aligned. IaC Spec Kit is used
 only for infrastructure; GitHub Spec Kit is used for application logic.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
+**Version**: 1.1.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
