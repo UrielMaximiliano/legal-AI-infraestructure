@@ -58,7 +58,8 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["legal_ai"]
+source = ["src/legal_ai"]
+branch = true
 omit = ["tests/*"]
 
 [tool.coverage.report]

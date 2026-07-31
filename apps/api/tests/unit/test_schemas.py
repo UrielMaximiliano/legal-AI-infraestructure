@@ -1,152 +1,235 @@
-"""Pruebas de validación de schemas Pydantic."""
+"""Unit tests for Pydantic schemas."""
 
-from __future__ import annotations
+import uuid
+from datetime import datetime
 
 import pytest
 from pydantic import ValidationError
 
-from legal_ai.schemas.errors import ErrorResponse
-from legal_ai.schemas.health import (
-    DependencyHealthSchema,
-    HealthDependenciesResponse,
-    HealthLiveResponse,
-    HealthReadyResponse,
+from legal_ai.domain.enums import CaseStatus
+from legal_ai.schemas.case_file import (
+    CaseFileResponse,
+    CreateCaseFileRequest,
+    HistoryItem,
+    HistoryResponse,
+    TransitionRequest,
+    UpdateCaseFileRequest,
 )
+from legal_ai.schemas.employee import (
+    CreateEmployeeRequest,
+    EmployeeResponse,
+    UpdateEmployeeRequest,
+)
+from legal_ai.schemas.errors import ErrorResponse, ValidationErrorDetail
+from legal_ai.schemas.pagination import PaginatedResponse
 
 
-@pytest.mark.unit
-class TestHealthLiveResponse:
-    """Pruebas para HealthLiveResponse."""
+class TestCreateEmployeeRequest:
+    """Tests for CreateEmployeeRequest schema."""
 
-    def test_valid_response(self) -> None:
-        """Verifica respuesta válida."""
-        response = HealthLiveResponse(
-            status="ok",
-            service="legal-ai-api",
-            version="0.1.0",
-            request_id="test-123",
+    def test_valid_request(self):
+        request = CreateEmployeeRequest(
+            employee_number="LEG-001",
+            first_name="Ana",
+            last_name="Pérez",
+            document_type="dni",
+            document_number="30111222",
         )
-        assert response.status == "ok"
-        assert response.service == "legal-ai-api"
+        assert request.employee_number == "LEG-001"
 
-    def test_missing_required_field(self) -> None:
-        """Verifica error con campo requerido faltante."""
+    def test_missing_required_field(self):
         with pytest.raises(ValidationError):
-            HealthLiveResponse(status="ok")
+            CreateEmployeeRequest(
+                employee_number="LEG-001",
+                first_name="Ana",
+                last_name="Pérez",
+            )
+
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            CreateEmployeeRequest(
+                employee_number="LEG-001",
+                first_name="Ana",
+                last_name="Pérez",
+                document_type="dni",
+                document_number="30111222",
+                unknown_field="value",
+            )
 
 
-@pytest.mark.unit
-class TestHealthReadyResponse:
-    """Pruebas para HealthReadyResponse."""
+class TestUpdateEmployeeRequest:
+    """Tests for UpdateEmployeeRequest schema."""
 
-    def test_valid_ready(self) -> None:
-        """Verifica respuesta ready."""
-        response = HealthReadyResponse(
-            status="ready",
-            timestamp="2026-07-31T15:00:00+00:00",
-            request_id="test-123",
+    def test_valid_request(self):
+        request = UpdateEmployeeRequest(first_name="Ana")
+        assert request.first_name == "Ana"
+
+    def test_empty_request(self):
+        request = UpdateEmployeeRequest()
+        assert request.first_name is None
+
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            UpdateEmployeeRequest(unknown_field="value")
+
+
+class TestCreateCaseFileRequest:
+    """Tests for CreateCaseFileRequest schema."""
+
+    def test_valid_request(self):
+        request = CreateCaseFileRequest(
+            employee_id=uuid.uuid4(),
+            title="Test Case",
+            case_type="designacion",
         )
-        assert response.status == "ready"
+        assert request.title == "Test Case"
 
-    def test_valid_not_ready(self) -> None:
-        """Verifica respuesta not_ready."""
-        response = HealthReadyResponse(
-            status="not_ready",
-            timestamp="2026-07-31T15:00:00+00:00",
-            request_id="test-123",
+    def test_invalid_case_type(self):
+        with pytest.raises(ValidationError):
+            CreateCaseFileRequest(
+                employee_id=uuid.uuid4(),
+                title="Test Case",
+                case_type="invalid_type",
+            )
+
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            CreateCaseFileRequest(
+                employee_id=uuid.uuid4(),
+                title="Test Case",
+                case_type="designacion",
+                unknown_field="value",
+            )
+
+
+class TestUpdateCaseFileRequest:
+    """Tests for UpdateCaseFileRequest schema."""
+
+    def test_valid_request(self):
+        request = UpdateCaseFileRequest(title="Updated", expected_version=1)
+        assert request.title == "Updated"
+
+    def test_missing_expected_version(self):
+        with pytest.raises(ValidationError):
+            UpdateCaseFileRequest(title="Updated")
+
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            UpdateCaseFileRequest(
+                title="Updated",
+                expected_version=1,
+                unknown_field="value",
+            )
+
+
+class TestTransitionRequest:
+    """Tests for TransitionRequest schema."""
+
+    def test_valid_request(self):
+        request = TransitionRequest(
+            status="under_review",
+            expected_version=1,
+            changed_by="user",
         )
-        assert response.status == "not_ready"
+        assert request.status == CaseStatus.UNDER_REVIEW
+
+    def test_invalid_status(self):
+        with pytest.raises(ValidationError):
+            TransitionRequest(
+                status="invalid_status",
+                expected_version=1,
+                changed_by="user",
+            )
+
+    def test_missing_changed_by(self):
+        with pytest.raises(ValidationError):
+            TransitionRequest(
+                status="under_review",
+                expected_version=1,
+            )
 
 
-@pytest.mark.unit
-class TestHealthDependenciesResponse:
-    """Pruebas para HealthDependenciesResponse."""
+class TestEmployeeResponse:
+    """Tests for EmployeeResponse schema."""
 
-    def test_valid_response_ok(self) -> None:
-        """Verifica respuesta con todas las dependencias OK."""
-        response = HealthDependenciesResponse(
-            status="ok",
-            timestamp="2026-07-31T15:00:00+00:00",
-            request_id="test-123",
-            dependencies={
-                "postgres": DependencyHealthSchema(status="ok", latency_ms=10.0),
-                "pgvector": DependencyHealthSchema(status="ok"),
-                "ollama": DependencyHealthSchema(status="ok", latency_ms=30.0),
-            },
+    def test_valid_response(self):
+        response = EmployeeResponse(
+            id=uuid.uuid4(),
+            employee_number="LEG-001",
+            first_name="Ana",
+            last_name="Pérez",
+            document_type="dni",
+            document_number="30111222",
+            active=True,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
         )
-        assert response.status == "ok"
-        assert len(response.dependencies) == 3
+        assert response.active is True
 
-    def test_valid_response_partial(self) -> None:
-        """Verifica respuesta con dependencias parciales."""
-        response = HealthDependenciesResponse(
-            status="partial",
-            timestamp="2026-07-31T15:00:00+00:00",
-            request_id="test-123",
-            dependencies={
-                "postgres": DependencyHealthSchema(status="ok"),
-                "pgvector": DependencyHealthSchema(status="ok"),
-                "ollama": DependencyHealthSchema(
-                    status="timeout",
-                    latency_ms=5000.0,
-                    error_code="OLLAMA_TIMEOUT",
-                    message="Timeout",
-                ),
-            },
+
+class TestCaseFileResponse:
+    """Tests for CaseFileResponse schema."""
+
+    def test_valid_response(self):
+        response = CaseFileResponse(
+            id=uuid.uuid4(),
+            case_number="CF-123",
+            employee_id=uuid.uuid4(),
+            title="Test",
+            case_type="designacion",
+            status="draft",
+            version=1,
+            opened_at=datetime.now(),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
         )
-        assert response.status == "partial"
-        assert response.dependencies["ollama"].error_code == "OLLAMA_TIMEOUT"
+        assert response.version == 1
 
 
-@pytest.mark.unit
-class TestDependencyHealthSchema:
-    """Pruebas para DependencyHealthSchema."""
+class TestHistoryResponse:
+    """Tests for HistoryResponse schema."""
 
-    def test_with_auth_errors(self) -> None:
-        """Verifica estados de autenticación."""
-        unauthorized = DependencyHealthSchema(
-            status="unauthorized",
-            error_code="OLLAMA_UNAUTHORIZED",
+    def test_empty_history(self):
+        response = HistoryResponse(items=[])
+        assert len(response.items) == 0
+
+    def test_with_items(self):
+        item = HistoryItem(
+            id=uuid.uuid4(),
+            case_file_id=uuid.uuid4(),
+            to_status="draft",
+            changed_at=datetime.now(),
+            changed_by="system",
         )
-        assert unauthorized.status == "unauthorized"
-
-        forbidden = DependencyHealthSchema(
-            status="forbidden",
-            error_code="OLLAMA_FORBIDDEN",
-        )
-        assert forbidden.status == "forbidden"
-
-        rate_limited = DependencyHealthSchema(
-            status="rate_limited",
-            error_code="OLLAMA_RATE_LIMITED",
-        )
-        assert rate_limited.status == "rate_limited"
+        response = HistoryResponse(items=[item])
+        assert len(response.items) == 1
 
 
-@pytest.mark.unit
+class TestPaginatedResponse:
+    """Tests for PaginatedResponse schema."""
+
+    def test_valid_response(self):
+        response = PaginatedResponse(page=1, page_size=20, total=0, items=[])
+        assert response.total == 0
+
+
 class TestErrorResponse:
-    """Pruebas para ErrorResponse."""
+    """Tests for ErrorResponse schema."""
 
-    def test_valid_error_response(self) -> None:
-        """Verifica respuesta de error válida."""
-        response = ErrorResponse(
-            error_code="POSTGRES_UNAVAILABLE",
-            message="PostgreSQL no accesible",
-            request_id="test-123",
+    def test_valid_error(self):
+        error = ErrorResponse(
+            error_code="VALIDATION_ERROR",
+            message="Invalid data",
         )
-        assert response.error_code == "POSTGRES_UNAVAILABLE"
-        assert response.request_id == "test-123"
+        assert error.error_code == "VALIDATION_ERROR"
 
-    def test_error_response_without_request_id(self) -> None:
-        """Verifica respuesta de error sin request_id."""
-        response = ErrorResponse(
-            error_code="OLLAMA_TIMEOUT",
-            message="Timeout",
+    def test_with_errors(self):
+        errors = [
+            ValidationErrorDetail(field="name", code="required", message="Required")
+        ]
+        error = ErrorResponse(
+            error_code="VALIDATION_ERROR",
+            message="Invalid data",
+            errors=errors,
         )
-        assert response.error_code == "OLLAMA_TIMEOUT"
-        assert response.request_id is None
-
-    def test_missing_required_field(self) -> None:
-        """Verifica error con campo requerido faltante."""
-        with pytest.raises(ValidationError):
-            ErrorResponse(error_code="TEST")
+        assert len(error.errors) == 1
