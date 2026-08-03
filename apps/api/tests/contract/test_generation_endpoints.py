@@ -5,7 +5,9 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from legal_ai.application.ollama_client import OllamaResponse
 from legal_ai.main import app
+from tests.contract.helpers_003 import seed_case_and_template
 
 
 @pytest.fixture
@@ -17,6 +19,29 @@ async def client():
 
 @pytest.mark.contract
 class TestGetGenerationAttempt:
+    async def test_get_generation_attempt_success(self, client, monkeypatch):
+        async def fake_generate(self, prompt):
+            return OllamaResponse(content="ok", model="test")
+
+        monkeypatch.setattr(
+            "legal_ai.application.ollama_client.OllamaClient.generate", fake_generate
+        )
+        case_file_id, template_id = await seed_case_and_template()
+        generated = await client.post(
+            "/api/v1/drafts/generate",
+            json={"template_id": str(template_id), "case_file_id": str(case_file_id)},
+        )
+        assert generated.status_code == 201
+        attempts = await client.get(
+            f"/api/v1/case-files/{case_file_id}/generation-attempts"
+        )
+        assert attempts.status_code == 200
+        attempt_id = attempts.json()[0]["id"]
+        response = await client.get(f"/api/v1/generation-attempts/{attempt_id}")
+        assert response.status_code == 200
+        assert response.json()["status"] == "completed"
+        assert "prompt_content" not in response.json()
+
     async def test_get_attempt_not_found_returns_404(self, client):
         response = await client.get(f"/api/v1/generation-attempts/{uuid.uuid4()}")
         assert response.status_code == 404

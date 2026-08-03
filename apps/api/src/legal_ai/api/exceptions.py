@@ -30,6 +30,7 @@ from legal_ai.application.draft_service import (
 )
 from legal_ai.application.draft_service import (
     ContentTooLargeError,
+    DraftAlreadyApprovedError,
     DraftNotFoundError,
     DraftReadOnlyError,
     GenerationInProgressError,
@@ -47,17 +48,24 @@ from legal_ai.application.employee_service import (
     EmployeeNotFoundError,
     EmployeeNumberConflictError,
 )
+from legal_ai.application.generation_context import (
+    ContextBuildFailedError,
+    DesignationDataIncompleteError,
+    MissingRequiredVariablesError,
+)
 from legal_ai.application.ollama_client import (
+    GenerationFailedError,
     OllamaError,
     OllamaTimeoutError,
     OllamaUnavailableError,
 )
 from legal_ai.application.template_service import (
+    TemplateConflictError,
     TemplateInactiveError,
     TemplateNameConflictError,
     TemplateNotFoundError,
 )
-from legal_ai.schemas.errors import ErrorResponse
+from legal_ai.schemas.errors import ErrorResponse, ValidationErrorDetail
 
 
 async def not_found_error_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -220,6 +228,16 @@ async def conflict_error_handler(request: Request, exc: Exception) -> JSONRespon
             ).model_dump(),
         )
 
+    if isinstance(exc, TemplateConflictError):
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="DOCUMENT_TEMPLATE_CONFLICT",
+                message="La plantilla ha sido modificada por otro usuario",
+                request_id=request_id,
+            ).model_dump(),
+        )
+
     if isinstance(exc, (TemplateInactiveError, DraftTemplateInactiveError)):
         return JSONResponse(
             status_code=409,
@@ -246,6 +264,16 @@ async def conflict_error_handler(request: Request, exc: Exception) -> JSONRespon
             content=ErrorResponse(
                 error_code="INVALID_DRAFT_TRANSITION",
                 message=f"Transición no válida: {exc.from_status} → {exc.to_status}",
+                request_id=request_id,
+            ).model_dump(),
+        )
+
+    if isinstance(exc, DraftAlreadyApprovedError):
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="DRAFT_ALREADY_APPROVED",
+                message="El borrador ya fue aprobado",
                 request_id=request_id,
             ).model_dump(),
         )
@@ -326,6 +354,33 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
             ).model_dump(),
         )
 
+    if isinstance(exc, (MissingRequiredVariablesError, DesignationDataIncompleteError)):
+        if isinstance(exc, MissingRequiredVariablesError):
+            return JSONResponse(
+                status_code=422,
+                content=ErrorResponse(
+                    error_code="MISSING_REQUIRED_VARIABLES",
+                    message="Faltan variables requeridas por la plantilla",
+                    errors=[
+                        ValidationErrorDetail(
+                            field=variable,
+                            code="missing",
+                            message="Variable requerida",
+                        )
+                        for variable in exc.missing
+                    ],
+                    request_id=request_id,
+                ).model_dump(),
+            )
+        return JSONResponse(
+            status_code=422,
+            content=ErrorResponse(
+                error_code="DESIGNATION_DATA_INCOMPLETE",
+                message="Los datos de designación están incompletos",
+                request_id=request_id,
+            ).model_dump(),
+        )
+
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(
@@ -360,7 +415,7 @@ async def service_error_handler(request: Request, exc: Exception) -> JSONRespons
             ).model_dump(),
         )
 
-    if isinstance(exc, OllamaError):
+    if isinstance(exc, (GenerationFailedError, OllamaError)):
         return JSONResponse(
             status_code=502,
             content=ErrorResponse(
@@ -383,6 +438,15 @@ async def service_error_handler(request: Request, exc: Exception) -> JSONRespons
 async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle generic errors (500)."""
     request_id = getattr(request.state, "request_id", None)
+    if isinstance(exc, ContextBuildFailedError):
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error_code="CONTEXT_BUILD_FAILED",
+                message="No se pudo construir el contexto de generación",
+                request_id=request_id,
+            ).model_dump(),
+        )
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(

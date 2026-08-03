@@ -27,6 +27,14 @@ class TemplateNameConflictError(Exception):
         super().__init__(f"Template name conflict: {name} ({document_type})")
 
 
+class TemplateConflictError(Exception):
+    """Template version could not be updated due to a concurrent change."""
+
+    def __init__(self, template_id: str) -> None:
+        self.template_id = template_id
+        super().__init__(f"Template version conflict: {template_id}")
+
+
 class TemplateInactiveError(Exception):
     """Template is inactive."""
 
@@ -152,6 +160,9 @@ class TemplateService:
         if not template.is_active:
             raise TemplateInactiveError(template_id)
 
+        await self._uow.templates.deactivate_all_versions(
+            template.name, template.document_type
+        )
         template.is_active = False
         template.updated_at = datetime.now(UTC)
         return await self._uow.templates.update(template)

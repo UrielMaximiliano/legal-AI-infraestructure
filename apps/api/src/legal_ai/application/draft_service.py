@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.application.generation_context import GenerationContext
@@ -90,6 +90,14 @@ class GenerationInProgressError(Exception):
         super().__init__(f"Generation in progress: {key}")
 
 
+class DraftAlreadyApprovedError(Exception):
+    """Draft has already been approved and cannot be approved again."""
+
+    def __init__(self, draft_id: str) -> None:
+        self.draft_id = draft_id
+        super().__init__(f"Draft already approved: {draft_id}")
+
+
 class ContentTooLargeError(Exception):
     """Content exceeds size limit."""
 
@@ -101,6 +109,8 @@ class ContentTooLargeError(Exception):
 
 class DraftService:
     """Service handling draft business operations."""
+
+    IDEMPOTENCY_WINDOW = timedelta(hours=24)
 
     def __init__(self, uow: UnitOfWork) -> None:
         self._uow = uow
@@ -158,6 +168,17 @@ class DraftService:
             existing = await self._uow.generation_attempts.get_by_idempotency_key(
                 idempotency_key
             )
+            if (
+                existing
+                and existing.created_at < datetime.now(UTC) - self.IDEMPOTENCY_WINDOW
+            ):
+                # Idempotency keys are reusable after the documented 24-hour
+                # retention window. Remove the stale attempt before creating a
+                # new one so the database uniqueness constraint is respected.
+                await self._uow.generation_attempts.delete_by_idempotency_key(
+                    idempotency_key
+                )
+                existing = None
             if existing:
                 if existing.prompt_hash != request_hash:
                     raise IdempotencyKeyMismatchError(idempotency_key)
@@ -188,6 +209,7 @@ class DraftService:
         context = await self._context_builder.build_context(
             tid, cf_id, supplied_variables
         )
+        self._context_builder.validate_variables(template.variables, supplied_variables)
         metadata = context["metadata"]
         if isinstance(metadata, dict):
             metadata["model"] = self._ollama.model
@@ -288,11 +310,11 @@ class DraftService:
         if not draft:
             raise DraftNotFoundError(draft_id)
 
-        if draft.status not in (DraftStatus.EN_REVISION, DraftStatus.RECHAZADO):
-            raise DraftReadOnlyError(draft_id, draft.status)
-
         if draft.version != expected_version:
             raise ConcurrentModificationError(draft_id)
+
+        if draft.status not in (DraftStatus.EN_REVISION, DraftStatus.RECHAZADO):
+            raise DraftReadOnlyError(draft_id, draft.status)
 
         draft.content = content
         result = await self._uow.drafts.update_with_optimistic_lock(
@@ -343,6 +365,11 @@ class DraftService:
 
         # Idempotent: if already in target status, return current
         if from_status == to_status:
+            if (
+                action == TransitionAction.APPROVE
+                and from_status == DraftStatus.APROBADO
+            ):
+                raise DraftAlreadyApprovedError(draft_id)
             return draft
 
         if not can_transition(from_status, to_status):
@@ -397,7 +424,10 @@ class DraftService:
 
         # Build fresh context
         context = await self._context_builder.build_context(
-            original.template_id, original.case_file_id
+            original.template_id, original.case_file_id, original.variables_used
+        )
+        self._context_builder.validate_variables(
+            template.variables, original.variables_used
         )
 
         # Render prompt

@@ -52,9 +52,34 @@ class TestCreateTemplate:
         )
         assert response.status_code == 422
 
+    async def test_duplicate_template_name_returns_409(self, client):
+        name = f"Duplicada {uuid.uuid4().hex[:8]}"
+        payload = {
+            "name": name,
+            "document_type": "resolucion",
+            "body_template": "body",
+        }
+        assert (await client.post("/api/v1/templates", json=payload)).status_code == 201
+        response = await client.post("/api/v1/templates", json=payload)
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "DOCUMENT_TEMPLATE_NAME_EXISTS"
+
 
 @pytest.mark.contract
 class TestGetTemplate:
+    async def test_get_template_success(self, client):
+        created = await client.post(
+            "/api/v1/templates",
+            json={
+                "name": f"Consulta {uuid.uuid4().hex[:8]}",
+                "document_type": "informe",
+                "body_template": "body",
+            },
+        )
+        response = await client.get(f"/api/v1/templates/{created.json()['id']}")
+        assert response.status_code == 200
+        assert response.json()["id"] == created.json()["id"]
+
     async def test_get_template_not_found_returns_404(self, client):
         response = await client.get(f"/api/v1/templates/{uuid.uuid4()}")
         assert response.status_code == 404
@@ -80,6 +105,23 @@ class TestListTemplates:
 
 @pytest.mark.contract
 class TestUpdateTemplate:
+    async def test_update_body_creates_new_version(self, client):
+        created = await client.post(
+            "/api/v1/templates",
+            json={
+                "name": f"Versionada {uuid.uuid4().hex[:8]}",
+                "document_type": "oficio",
+                "body_template": "v1",
+            },
+        )
+        response = await client.patch(
+            f"/api/v1/templates/{created.json()['id']}",
+            json={"body_template": "v2"},
+        )
+        assert response.status_code == 200
+        assert response.json()["version"] == 2
+        assert response.json()["body_template"] == "v2"
+
     async def test_update_template_not_found_returns_404(self, client):
         response = await client.patch(
             f"/api/v1/templates/{uuid.uuid4()}",
@@ -97,6 +139,21 @@ class TestUpdateTemplate:
 
 @pytest.mark.contract
 class TestDeactivateTemplate:
+    async def test_deactivate_template_success(self, client):
+        created = await client.post(
+            "/api/v1/templates",
+            json={
+                "name": f"Desactivada {uuid.uuid4().hex[:8]}",
+                "document_type": "solicitud",
+                "body_template": "body",
+            },
+        )
+        response = await client.post(
+            f"/api/v1/templates/{created.json()['id']}/deactivate"
+        )
+        assert response.status_code == 200
+        assert response.json()["is_active"] is False
+
     async def test_deactivate_template_not_found_returns_404(self, client):
         response = await client.post(f"/api/v1/templates/{uuid.uuid4()}/deactivate")
         assert response.status_code == 404

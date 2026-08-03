@@ -62,6 +62,8 @@ class GenerationContext:
         designation = None
         if case_file.case_type == "designacion":
             designation = await self._uow.designations.get_by_case_file_id(case_file_id)
+            if designation is None or not getattr(designation, "position_name", None):
+                raise DesignationDataIncompleteError()
 
         context: ContextSnapshot = {
             "template": {

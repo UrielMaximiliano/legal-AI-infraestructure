@@ -38,7 +38,14 @@ class OllamaTimeoutError(OllamaError):
     status_code = 504
 
 
-class OllamaResponseError(OllamaError):
+class GenerationFailedError(OllamaError):
+    """Ollama responded but generation could not be completed."""
+
+    error_code = "GENERATION_FAILED"
+    status_code = 502
+
+
+class OllamaResponseError(GenerationFailedError):
     """Ollama returned an invalid or unsuccessful response."""
 
     def __init__(self, message: str, upstream_status: int | None = None) -> None:

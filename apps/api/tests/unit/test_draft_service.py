@@ -153,7 +153,9 @@ async def test_ollama_failure_records_attempt_and_creates_no_draft() -> None:
     service._ollama.generate = AsyncMock(side_effect=OllamaUnavailableError())
 
     with pytest.raises(OllamaUnavailableError):
-        await service.generate_draft(str(template_id), str(case_file_id))
+        await service.generate_draft(
+            str(template_id), str(case_file_id), {"note": "texto"}
+        )
 
     uow.drafts.create.assert_not_awaited()
     failed = uow.generation_attempts.update.await_args.args[0]

@@ -42,6 +42,7 @@ from legal_ai.application.draft_service import (
 )
 from legal_ai.application.draft_service import (
     ContentTooLargeError,
+    DraftAlreadyApprovedError,
     DraftNotFoundError,
     DraftReadOnlyError,
     GenerationInProgressError,
@@ -59,12 +60,19 @@ from legal_ai.application.employee_service import (
     EmployeeNotFoundError,
     EmployeeNumberConflictError,
 )
+from legal_ai.application.generation_context import (
+    ContextBuildFailedError,
+    DesignationDataIncompleteError,
+    MissingRequiredVariablesError,
+)
 from legal_ai.application.ollama_client import (
+    GenerationFailedError,
     OllamaError,
     OllamaTimeoutError,
     OllamaUnavailableError,
 )
 from legal_ai.application.template_service import (
+    TemplateConflictError,
     TemplateInactiveError,
     TemplateNameConflictError,
     TemplateNotFoundError,
@@ -109,16 +117,22 @@ app.add_exception_handler(ConcurrentModificationError, conflict_error_handler)
 app.add_exception_handler(DraftConcurrentModificationError, conflict_error_handler)
 app.add_exception_handler(InvalidStatusTransitionError, conflict_error_handler)
 app.add_exception_handler(TemplateNameConflictError, conflict_error_handler)
+app.add_exception_handler(TemplateConflictError, conflict_error_handler)
 app.add_exception_handler(TemplateInactiveError, conflict_error_handler)
 app.add_exception_handler(DraftTemplateInactiveError, conflict_error_handler)
 app.add_exception_handler(DraftReadOnlyError, conflict_error_handler)
 app.add_exception_handler(InvalidDraftTransitionError, conflict_error_handler)
+app.add_exception_handler(DraftAlreadyApprovedError, conflict_error_handler)
 app.add_exception_handler(CaseFileTypeIncompatibleError, conflict_error_handler)
 app.add_exception_handler(DesignationExistsError, conflict_error_handler)
 app.add_exception_handler(IdempotencyKeyMismatchError, conflict_error_handler)
 app.add_exception_handler(GenerationInProgressError, conflict_error_handler)
 app.add_exception_handler(CaseFileEmployeeInactiveError, validation_error_handler)
 app.add_exception_handler(ContentTooLargeError, validation_error_handler)
+app.add_exception_handler(MissingRequiredVariablesError, validation_error_handler)
+app.add_exception_handler(DesignationDataIncompleteError, validation_error_handler)
+app.add_exception_handler(ContextBuildFailedError, generic_error_handler)
+app.add_exception_handler(GenerationFailedError, service_error_handler)
 app.add_exception_handler(OllamaUnavailableError, service_error_handler)
 app.add_exception_handler(OllamaTimeoutError, service_error_handler)
 app.add_exception_handler(OllamaError, service_error_handler)
