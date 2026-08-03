@@ -33,3 +33,41 @@ class CaseType(StrEnum):
     RENUNCIA = "renuncia"
     CONTRATACION = "contratacion"
     OTRO = "otro"
+
+
+class TemplateDocumentType(StrEnum):
+    """Tipos de documento para plantillas."""
+
+    RESOLUCION = "resolucion"
+    INFORME = "informe"
+    OFICIO = "oficio"
+    SOLICITUD = "solicitud"
+    ACUERDO = "acuerdo"
+    OTROS = "otros"
+
+
+class DraftStatus(StrEnum):
+    """Estados del borrador de documento."""
+
+    GENERADO = "generado"
+    EN_REVISION = "en_revision"
+    APROBADO = "aprobado"
+    RECHAZADO = "rechazado"
+    SUPERSEDED = "superseded"
+
+
+class TransitionAction(StrEnum):
+    """Acciones de transición de borrador."""
+
+    SEND_TO_REVIEW = "send_to_review"
+    APPROVE = "approve"
+    REJECT = "reject"
+    EDIT_CONTENT = "edit_content"
+
+
+class GenerationStatus(StrEnum):
+    """Estados de intento de generación."""
+
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"

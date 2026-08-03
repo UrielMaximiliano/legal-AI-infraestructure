@@ -13,9 +13,11 @@ from legal_ai.api.exceptions import (
     conflict_error_handler,
     generic_error_handler,
     not_found_error_handler,
+    service_error_handler,
     validation_error_handler,
 )
 from legal_ai.api.router import router
+from legal_ai.api.routes.generation import GenerationAttemptNotFoundError
 from legal_ai.application.case_file_service import (
     CaseFileArchivedError,
     CaseFileEmployeeInactiveError,
@@ -24,10 +26,56 @@ from legal_ai.application.case_file_service import (
     ConcurrentModificationError,
     InvalidStatusTransitionError,
 )
+from legal_ai.application.designation_service import (
+    CaseFileNotFoundError as DesignationCaseFileNotFoundError,
+)
+from legal_ai.application.designation_service import (
+    CaseFileTypeIncompatibleError,
+    DesignationExistsError,
+    DesignationNotFoundError,
+)
+from legal_ai.application.draft_service import (
+    CaseFileNotFoundError as DraftCaseFileNotFoundError,
+)
+from legal_ai.application.draft_service import (
+    ConcurrentModificationError as DraftConcurrentModificationError,
+)
+from legal_ai.application.draft_service import (
+    ContentTooLargeError,
+    DraftAlreadyApprovedError,
+    DraftNotFoundError,
+    DraftReadOnlyError,
+    GenerationInProgressError,
+    IdempotencyKeyMismatchError,
+    InvalidDraftTransitionError,
+)
+from legal_ai.application.draft_service import (
+    TemplateInactiveError as DraftTemplateInactiveError,
+)
+from legal_ai.application.draft_service import (
+    TemplateNotFoundError as DraftTemplateNotFoundError,
+)
 from legal_ai.application.employee_service import (
     EmployeeDocumentConflictError,
     EmployeeNotFoundError,
     EmployeeNumberConflictError,
+)
+from legal_ai.application.generation_context import (
+    ContextBuildFailedError,
+    DesignationDataIncompleteError,
+    MissingRequiredVariablesError,
+)
+from legal_ai.application.ollama_client import (
+    GenerationFailedError,
+    OllamaError,
+    OllamaTimeoutError,
+    OllamaUnavailableError,
+)
+from legal_ai.application.template_service import (
+    TemplateConflictError,
+    TemplateInactiveError,
+    TemplateNameConflictError,
+    TemplateNotFoundError,
 )
 from legal_ai.config import settings
 from legal_ai.observability.logging import setup_logging
@@ -54,13 +102,40 @@ app.include_router(router)
 # Register exception handlers
 app.add_exception_handler(EmployeeNotFoundError, not_found_error_handler)
 app.add_exception_handler(CaseFileNotFoundError, not_found_error_handler)
+app.add_exception_handler(DesignationCaseFileNotFoundError, not_found_error_handler)
+app.add_exception_handler(DraftCaseFileNotFoundError, not_found_error_handler)
 app.add_exception_handler(CaseFileEmployeeNotFoundError, not_found_error_handler)
+app.add_exception_handler(TemplateNotFoundError, not_found_error_handler)
+app.add_exception_handler(DraftTemplateNotFoundError, not_found_error_handler)
+app.add_exception_handler(DraftNotFoundError, not_found_error_handler)
+app.add_exception_handler(DesignationNotFoundError, not_found_error_handler)
+app.add_exception_handler(GenerationAttemptNotFoundError, not_found_error_handler)
 app.add_exception_handler(EmployeeNumberConflictError, conflict_error_handler)
 app.add_exception_handler(EmployeeDocumentConflictError, conflict_error_handler)
 app.add_exception_handler(CaseFileArchivedError, conflict_error_handler)
 app.add_exception_handler(ConcurrentModificationError, conflict_error_handler)
+app.add_exception_handler(DraftConcurrentModificationError, conflict_error_handler)
 app.add_exception_handler(InvalidStatusTransitionError, conflict_error_handler)
+app.add_exception_handler(TemplateNameConflictError, conflict_error_handler)
+app.add_exception_handler(TemplateConflictError, conflict_error_handler)
+app.add_exception_handler(TemplateInactiveError, conflict_error_handler)
+app.add_exception_handler(DraftTemplateInactiveError, conflict_error_handler)
+app.add_exception_handler(DraftReadOnlyError, conflict_error_handler)
+app.add_exception_handler(InvalidDraftTransitionError, conflict_error_handler)
+app.add_exception_handler(DraftAlreadyApprovedError, conflict_error_handler)
+app.add_exception_handler(CaseFileTypeIncompatibleError, conflict_error_handler)
+app.add_exception_handler(DesignationExistsError, conflict_error_handler)
+app.add_exception_handler(IdempotencyKeyMismatchError, conflict_error_handler)
+app.add_exception_handler(GenerationInProgressError, conflict_error_handler)
 app.add_exception_handler(CaseFileEmployeeInactiveError, validation_error_handler)
+app.add_exception_handler(ContentTooLargeError, validation_error_handler)
+app.add_exception_handler(MissingRequiredVariablesError, validation_error_handler)
+app.add_exception_handler(DesignationDataIncompleteError, validation_error_handler)
+app.add_exception_handler(ContextBuildFailedError, generic_error_handler)
+app.add_exception_handler(GenerationFailedError, service_error_handler)
+app.add_exception_handler(OllamaUnavailableError, service_error_handler)
+app.add_exception_handler(OllamaTimeoutError, service_error_handler)
+app.add_exception_handler(OllamaError, service_error_handler)
 app.add_exception_handler(Exception, generic_error_handler)
 
 

@@ -44,3 +44,5 @@ uv.lock
 # Documentation
 *.md
 !README.md
+!specs/**/*.md
+!.specify/**/*.md
