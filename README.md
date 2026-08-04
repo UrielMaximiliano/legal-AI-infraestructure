@@ -1,0 +1,98 @@
+# legal-AI-infraestructure
+
+## Incremento 004: revisión humana y exportación documental
+
+El incremento 004 agrega revisión humana, finalización write-once, preview y
+exportación local de documentos aprobados. Es compatible con la máquina de
+estados de 003 y no agrega autenticación, colas, Redis, scheduler ni
+almacenamiento cloud.
+
+### Flujo operativo
+
+1. Abrir una revisión para el `draft_version` actual.
+2. Agregar/resolver comentarios y aprobar la revisión cerrada.
+3. Finalizar el draft una sola vez; `final_snapshot` y su SHA-256 quedan
+   inmutables.
+4. Obtener preview HTML con
+   `GET /api/v1/drafts/{draft_id}/preview?draft_version={n}`.
+5. Crear DOCX o PDF con `POST /api/v1/drafts/{draft_id}/exports`.
+6. Consultar metadata/attempts y descargar con
+   `GET /api/v1/exports/{export_id}/download`.
+
+HTML es únicamente preview y representación intermedia no persistida. DOCX y
+PDF son los únicos artefactos persistidos y descargables. Las exportaciones se
+generan desde `final_snapshot`; Ollama se ejecuta fuera del proceso de
+exportación y su indisponibilidad no afecta descargas de artefactos ya
+generados.
+
+### Endpoints 004
+
+- Reviews: current, create, comments, update comment, submit, approve,
+  request-changes e history.
+- Draft: `POST /api/v1/drafts/{draft_id}/finalize` y preview HTML.
+- Exports: create, list, metadata, attempts, download, retry y regenerate.
+- Administrativo: `document-exports reconcile` (no existe DELETE HTTP).
+
+Las mutaciones exigen `expected_version` cuando corresponde. Creación, retry y
+regeneración usan `Idempotency-Key`; retry reutiliza el mismo `DocumentExport`,
+mientras regenerate crea uno nuevo y enlaza `parent_export_id`. `GENERATED` y
+`SUPERSEDED` son descargables.
+
+Los errores JSON mantienen el envelope de 003 e incluyen `request_id` y
+timestamp UTC RFC 3339. Las descargas verifican ruta, MIME, estructura y
+SHA-256 antes de iniciar streaming. Range no está soportado: responde
+`416 RANGE_NOT_SUPPORTED` con `Accept-Ranges: none`.
+
+### Límites y almacenamiento
+
+Los límites configurables están expresados en bytes binarios en
+[`.env.example`](.env.example): contenido editable y snapshot 2 MiB,
+preview 5 MiB, DOCX 20 MiB y PDF 30 MiB. DOCX aplica además límites de ZIP
+anti-bomb. El almacenamiento es local bajo `EXPORT_STORAGE_ROOT`, usa rutas
+relativas basadas en UUID/version, permisos mínimos, temporales en el mismo
+directorio y rename atómico.
+
+### Reconciliación
+
+```bash
+document-exports reconcile --actor ops-admin --draft-id <draft-id>
+document-exports reconcile --actor ops-admin --incident-type ORPHAN_FILE \
+  --older-than P7D
+document-exports reconcile --actor ops-admin --run-id <run-id> --execute
+```
+
+El modo dry-run es el predeterminado. `--execute` solo elimina temporales,
+huérfanos elegibles y attempts FAILED fuera de retención; conserva registros
+sin archivo, archivos corruptos, el último artefacto válido y recursos con
+procesamiento activo. La salida JSON contiene `run_id`, candidatos,
+eliminados, omitidos, conflictos y errores.
+
+### Observabilidad y seguridad
+
+Los eventos estructurados contienen únicamente identificadores técnicos,
+formato/versiones, duraciones, tamaños, hashes y códigos sanitizados. No se
+registran DNI, CUIL, nombres completos, actores fuera de auditoría, contenido,
+`final_snapshot`, tokens, headers Authorization, rutas absolutas ni
+`storage_path`.
+
+### Validación local
+
+```bash
+cd apps/api
+uv run pytest
+uv run ruff check src tests scripts
+uv run mypy src/legal_ai
+uv run python scripts/benchmark_004.py \
+  --dataset tests/fixtures/benchmark_004_dataset.json \
+  --warmup 10 --iterations 50 \
+  --output artifacts/benchmarks/004.json
+```
+
+Los benchmarks son manuales e informativos; no forman parte del CI estándar ni
+son un gate de release. El protocolo usa Linux/amd64 en Docker, Python 3.12,
+PostgreSQL 16, dataset sintético sin PII, p50/p95/máximo y alertas por
+regresión superior al 10 %. La aceptación HTTP 202 no mide la generación
+completa de DOCX/PDF.
+
+Para el entorno operativo y el smoke completo, consultar
+[specs/004-document-review-and-export/quickstart.md](specs/004-document-review-and-export/quickstart.md).

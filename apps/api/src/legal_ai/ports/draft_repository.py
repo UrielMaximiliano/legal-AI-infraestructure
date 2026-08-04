@@ -16,6 +16,8 @@ class DraftRepository(Protocol):
 
     async def get_by_id(self, draft_id: UUID) -> Draft | None: ...
 
+    async def get_by_id_for_update(self, draft_id: UUID) -> Draft | None: ...
+
     async def list_by_case_file(
         self,
         case_file_id: UUID,
@@ -32,4 +34,15 @@ class DraftRepository(Protocol):
 
     async def update_status(
         self, draft_id: UUID, new_status: DraftStatus, version: int
+    ) -> Draft | None: ...
+
+    async def update_finalization(
+        self,
+        draft_id: UUID,
+        expected_version: int,
+        finalized_by: str,
+        finalized_at: object,
+        finalization_notes: str | None,
+        final_snapshot: dict[str, object],
+        final_snapshot_sha256: str,
     ) -> Draft | None: ...

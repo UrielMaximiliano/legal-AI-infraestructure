@@ -61,6 +61,10 @@ class DraftResponse(BaseModel):
     request_id: str | None = None
     created_at: datetime
     updated_at: datetime
+    finalized_by: str | None = None
+    finalized_at: datetime | None = None
+    finalization_notes: str | None = None
+    final_snapshot_sha256: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

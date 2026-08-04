@@ -13,6 +13,9 @@ from legal_ai.adapters.database.case_status_history_repository import (
 from legal_ai.adapters.database.designation_repository import (
     SQLAlchemyDesignationRepository,
 )
+from legal_ai.adapters.database.document_export_repository import (
+    SQLAlchemyDocumentExportRepository,
+)
 from legal_ai.adapters.database.draft_repository import SQLAlchemyDraftRepository
 from legal_ai.adapters.database.draft_transition_repository import (
     SQLAlchemyDraftTransitionRepository,
@@ -21,8 +24,21 @@ from legal_ai.adapters.database.employee_repository import (
     SQLAlchemyEmployeeRepository,
 )
 from legal_ai.adapters.database.engine import create_engine
+from legal_ai.adapters.database.export_attempt_repository import (
+    SQLAlchemyExportAttemptRepository,
+)
 from legal_ai.adapters.database.generation_attempt_repository import (
     SQLAlchemyGenerationAttemptRepository,
+)
+from legal_ai.adapters.database.review_comment_repository import (
+    SQLAlchemyReviewCommentRepository,
+)
+from legal_ai.adapters.database.review_event_repository import (
+    SQLAlchemyReviewEventRepository,
+)
+from legal_ai.adapters.database.review_repository import (
+    SQLAlchemyReviewOperationRequestRepository,
+    SQLAlchemyReviewRepository,
 )
 from legal_ai.adapters.database.template_repository import (
     SQLAlchemyTemplateRepository,
@@ -43,6 +59,14 @@ class UnitOfWork:
         self._draft_transitions: SQLAlchemyDraftTransitionRepository | None = None
         self._generation_attempts: SQLAlchemyGenerationAttemptRepository | None = None
         self._designations: SQLAlchemyDesignationRepository | None = None
+        self._reviews: SQLAlchemyReviewRepository | None = None
+        self._review_operations: SQLAlchemyReviewOperationRequestRepository | None = (
+            None
+        )
+        self._review_comments: SQLAlchemyReviewCommentRepository | None = None
+        self._review_events: SQLAlchemyReviewEventRepository | None = None
+        self._document_exports: SQLAlchemyDocumentExportRepository | None = None
+        self._export_attempts: SQLAlchemyExportAttemptRepository | None = None
 
     async def __aenter__(self) -> UnitOfWork:
         self._session = AsyncSession(self._engine, expire_on_commit=False)
@@ -55,6 +79,14 @@ class UnitOfWork:
         self._draft_transitions = SQLAlchemyDraftTransitionRepository(self._session)
         self._generation_attempts = SQLAlchemyGenerationAttemptRepository(self._session)
         self._designations = SQLAlchemyDesignationRepository(self._session)
+        self._reviews = SQLAlchemyReviewRepository(self._session)
+        self._review_operations = SQLAlchemyReviewOperationRequestRepository(
+            self._session
+        )
+        self._review_comments = SQLAlchemyReviewCommentRepository(self._session)
+        self._review_events = SQLAlchemyReviewEventRepository(self._session)
+        self._document_exports = SQLAlchemyDocumentExportRepository(self._session)
+        self._export_attempts = SQLAlchemyExportAttemptRepository(self._session)
         return self
 
     async def __aexit__(
@@ -127,3 +159,39 @@ class UnitOfWork:
         if self._designations is None:
             raise RuntimeError("UnitOfWork not initialized")
         return self._designations
+
+    @property
+    def reviews(self) -> SQLAlchemyReviewRepository:
+        if self._reviews is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._reviews
+
+    @property
+    def review_operations(self) -> SQLAlchemyReviewOperationRequestRepository:
+        if self._review_operations is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._review_operations
+
+    @property
+    def review_comments(self) -> SQLAlchemyReviewCommentRepository:
+        if self._review_comments is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._review_comments
+
+    @property
+    def review_events(self) -> SQLAlchemyReviewEventRepository:
+        if self._review_events is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._review_events
+
+    @property
+    def document_exports(self) -> SQLAlchemyDocumentExportRepository:
+        if self._document_exports is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._document_exports
+
+    @property
+    def export_attempts(self) -> SQLAlchemyExportAttemptRepository:
+        if self._export_attempts is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._export_attempts

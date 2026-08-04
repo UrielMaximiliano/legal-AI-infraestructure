@@ -16,3 +16,4 @@ class PaginatedResponse[T](BaseModel):
     page_size: int
     total: int
     items: list[T]
+    request_id: str | None = None

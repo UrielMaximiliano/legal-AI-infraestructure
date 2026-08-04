@@ -12,7 +12,12 @@ dependencies = [
     "asyncpg>=0.30.0,<1.0",
     "alembic>=1.14.0,<2.0",
     "httpx>=0.28.0,<1.0",
+    "python-docx>=1.1.2,<2.0",
+    "weasyprint>=63.0,<70.0",
 ]
+
+[project.scripts]
+document-exports = "legal_ai.cli.document_exports:main"
 
 [project.optional-dependencies]
 dev = [

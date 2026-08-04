@@ -65,7 +65,34 @@ from legal_ai.application.template_service import (
     TemplateNameConflictError,
     TemplateNotFoundError,
 )
+from legal_ai.domain.errors import DomainError
 from legal_ai.schemas.errors import ErrorResponse, ValidationErrorDetail
+
+
+async def domain_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Map 004 domain errors to the shared sanitized envelope."""
+    request_id = getattr(request.state, "request_id", None)
+    if isinstance(exc, DomainError):
+        response = JSONResponse(
+            status_code=exc.status_code,
+            content=ErrorResponse(
+                error_code=exc.code,
+                message=exc.message,
+                details=exc.details,
+                request_id=request_id,
+            ).model_dump(),
+        )
+        if exc.code == "RANGE_NOT_SUPPORTED":
+            response.headers["Accept-Ranges"] = "none"
+        return response
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(
+            error_code="DATABASE_ERROR",
+            message="Error interno del servidor",
+            request_id=request_id,
+        ).model_dump(),
+    )
 
 
 async def not_found_error_handler(request: Request, exc: Exception) -> JSONResponse:

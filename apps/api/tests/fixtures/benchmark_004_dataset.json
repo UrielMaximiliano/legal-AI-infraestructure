@@ -1,0 +1,24 @@
+{
+  "dataset_version": "004-benchmark-v1",
+  "drafts": 100,
+  "reviews": 100,
+  "comments": 1000,
+  "snapshot": {
+    "bytes": 102400,
+    "pattern": "A",
+    "sha256": "c3bfc7d2d0619aaca6fc8e2db4c4ff13059ce3c7f22c13bce512ece83362ed69"
+  },
+  "artifacts": {
+    "docx": {
+      "bytes": 1048576,
+      "sha256": "d827ea120a5c6a93fbe06a3a89670ba26add041401e2554deb496a35a366a1e6"
+    },
+    "pdf": {
+      "bytes": 1048576,
+      "sha256": "5e818575b16efb01e7499bf5a678bd6f1010eca0d7d0176a5ae25a51be2d0a66"
+    }
+  },
+  "incident_entries": 1000,
+  "incidents": 100,
+  "pii": false
+}

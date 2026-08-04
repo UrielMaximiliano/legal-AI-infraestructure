@@ -310,6 +310,9 @@ class DraftService:
         if not draft:
             raise DraftNotFoundError(draft_id)
 
+        if draft.is_finalized():
+            raise DraftReadOnlyError(draft_id, draft.status)
+
         if draft.version != expected_version:
             raise ConcurrentModificationError(draft_id)
 
@@ -348,6 +351,9 @@ class DraftService:
         draft = await self._uow.drafts.get_by_id(uuid.UUID(draft_id))
         if not draft:
             raise DraftNotFoundError(draft_id)
+
+        if draft.is_finalized():
+            raise DraftReadOnlyError(draft_id, draft.status)
 
         if draft.version != expected_version:
             raise ConcurrentModificationError(draft_id)
@@ -406,6 +412,9 @@ class DraftService:
         original = await self._uow.drafts.get_by_id(uuid.UUID(draft_id))
         if not original:
             raise DraftNotFoundError(draft_id)
+
+        if original.is_finalized():
+            raise DraftReadOnlyError(draft_id, original.status)
 
         if original.version != expected_version:
             raise ConcurrentModificationError(draft_id)

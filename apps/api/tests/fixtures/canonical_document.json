@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "source_draft_version": 1,
+  "document": {
+    "title": "Documento de prueba",
+    "locale": "es-AR",
+    "visto": ["VISTO el expediente"],
+    "considerando": ["CONSIDERANDO la documentación"],
+    "por_ello": "POR ELLO se resuelve."
+  },
+  "source_text": "Contenido aprobado"
+}

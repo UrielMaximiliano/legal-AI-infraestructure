@@ -34,6 +34,11 @@ class SQLAlchemyDraftRepository:
             parent_draft_id=draft.parent_draft_id,
             observations=draft.observations,
             request_id=draft.request_id,
+            finalized_by=draft.finalized_by,
+            finalized_at=draft.finalized_at,
+            finalization_notes=draft.finalization_notes,
+            final_snapshot=draft.final_snapshot,
+            final_snapshot_sha256=draft.final_snapshot_sha256,
         )
         self._session.add(model)
         await self._session.flush()
@@ -42,6 +47,16 @@ class SQLAlchemyDraftRepository:
     async def get_by_id(self, draft_id: UUID) -> Draft | None:
         result = await self._session.execute(
             select(DocumentDraftModel).where(DocumentDraftModel.id == draft_id)
+        )
+        model = result.scalars().first()
+        return self._to_domain(model) if model else None
+
+    async def get_by_id_for_update(self, draft_id: UUID) -> Draft | None:
+        """Load one draft with a short row lock for finalization."""
+        result = await self._session.execute(
+            select(DocumentDraftModel)
+            .where(DocumentDraftModel.id == draft_id)
+            .with_for_update()
         )
         model = result.scalars().first()
         return self._to_domain(model) if model else None
@@ -84,6 +99,7 @@ class SQLAlchemyDraftRepository:
             .where(
                 DocumentDraftModel.id == draft.id,
                 DocumentDraftModel.version == expected_version,
+                DocumentDraftModel.finalized_at.is_(None),
             )
             .values(
                 content=draft.content,
@@ -109,6 +125,7 @@ class SQLAlchemyDraftRepository:
             .where(
                 DocumentDraftModel.id == draft.id,
                 DocumentDraftModel.version == expected_version,
+                DocumentDraftModel.finalized_at.is_(None),
             )
             .values(
                 title=draft.title,
@@ -130,6 +147,7 @@ class SQLAlchemyDraftRepository:
             .where(
                 DocumentDraftModel.id == draft_id,
                 DocumentDraftModel.version == version,
+                DocumentDraftModel.finalized_at.is_(None),
             )
             .values(
                 status=new_status,
@@ -145,6 +163,37 @@ class SQLAlchemyDraftRepository:
         )
         model = result2.scalars().one()
         return self._to_domain(model)
+
+    async def update_finalization(
+        self,
+        draft_id: UUID,
+        expected_version: int,
+        finalized_by: str,
+        finalized_at: object,
+        finalization_notes: str | None,
+        final_snapshot: dict[str, object],
+        final_snapshot_sha256: str,
+    ) -> Draft | None:
+        """Write finalization metadata exactly once under optimistic locking."""
+        result = await self._session.execute(
+            update(DocumentDraftModel)
+            .where(
+                DocumentDraftModel.id == draft_id,
+                DocumentDraftModel.version == expected_version,
+                DocumentDraftModel.finalized_at.is_(None),
+            )
+            .values(
+                finalized_by=finalized_by,
+                finalized_at=finalized_at,
+                finalization_notes=finalization_notes,
+                final_snapshot=final_snapshot,
+                final_snapshot_sha256=final_snapshot_sha256,
+                version=expected_version + 1,
+            )
+            .returning(DocumentDraftModel)
+        )
+        model = result.scalars().first()
+        return self._to_domain(model) if model else None
 
     @staticmethod
     def _to_domain(model: DocumentDraftModel) -> Draft:
@@ -163,6 +212,11 @@ class SQLAlchemyDraftRepository:
             parent_draft_id=model.parent_draft_id,
             observations=model.observations,
             request_id=model.request_id,
+            finalized_by=model.finalized_by,
+            finalized_at=model.finalized_at,
+            finalization_notes=model.finalization_notes,
+            final_snapshot=model.final_snapshot,
+            final_snapshot_sha256=model.final_snapshot_sha256,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )

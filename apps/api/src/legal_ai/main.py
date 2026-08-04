@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from legal_ai.api.exceptions import (
     conflict_error_handler,
+    domain_error_handler,
     generic_error_handler,
     not_found_error_handler,
     service_error_handler,
@@ -78,6 +79,7 @@ from legal_ai.application.template_service import (
     TemplateNotFoundError,
 )
 from legal_ai.config import settings
+from legal_ai.domain.errors import DomainError
 from legal_ai.observability.logging import setup_logging
 from legal_ai.observability.request_context import RequestContextMiddleware
 from legal_ai.schemas.errors import ErrorResponse, ValidationErrorDetail
@@ -127,6 +129,7 @@ app.add_exception_handler(CaseFileTypeIncompatibleError, conflict_error_handler)
 app.add_exception_handler(DesignationExistsError, conflict_error_handler)
 app.add_exception_handler(IdempotencyKeyMismatchError, conflict_error_handler)
 app.add_exception_handler(GenerationInProgressError, conflict_error_handler)
+app.add_exception_handler(DomainError, domain_error_handler)
 app.add_exception_handler(CaseFileEmployeeInactiveError, validation_error_handler)
 app.add_exception_handler(ContentTooLargeError, validation_error_handler)
 app.add_exception_handler(MissingRequiredVariablesError, validation_error_handler)

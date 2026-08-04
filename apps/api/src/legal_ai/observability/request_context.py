@@ -8,6 +8,8 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from legal_ai.observability.logging import reset_request_id, set_request_id
+
 _REQUEST_ID_HEADER = "X-Request-ID"
 _MAX_REQUEST_ID_LENGTH = 128
 
@@ -21,10 +23,13 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         raw_id = request.headers.get(_REQUEST_ID_HEADER, "")
         request_id = self._sanitize_request_id(raw_id)
         request.state.request_id = request_id
-
-        response = await call_next(request)
-        response.headers[_REQUEST_ID_HEADER] = request_id
-        return response
+        token = set_request_id(request_id)
+        try:
+            response = await call_next(request)
+            response.headers[_REQUEST_ID_HEADER] = request_id
+            return response
+        finally:
+            reset_request_id(token)
 
     @staticmethod
     def _sanitize_request_id(raw_id: str) -> str:
