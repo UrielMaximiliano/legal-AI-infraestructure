@@ -1,0 +1,5 @@
+{
+  "max_entries": 500,
+  "max_uncompressed_bytes": 52428800,
+  "max_ratio": 100
+}

@@ -29,6 +29,19 @@ class Draft:
     parent_draft_id: UUID | None = None
     observations: str | None = None
     request_id: str | None = None
+    finalized_by: str | None = None
+    finalized_at: datetime | None = None
+    finalization_notes: str | None = None
+    final_snapshot: dict[str, object] | None = None
+    final_snapshot_sha256: str | None = None
+
+    def is_finalized(self) -> bool:
+        """Return whether this draft has an immutable final snapshot."""
+        return self.finalized_at is not None
+
+    def can_finalize(self) -> bool:
+        """Return whether finalization metadata can be written once."""
+        return self.status == DraftStatus.APROBADO and not self.is_finalized()
 
 
 @dataclass

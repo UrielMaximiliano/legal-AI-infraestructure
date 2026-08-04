@@ -71,3 +71,67 @@ class GenerationStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class ReviewStatus(StrEnum):
+    """Estados de una revisión humana versionada."""
+
+    OPEN = "OPEN"
+    SUBMITTED = "SUBMITTED"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    APPROVED = "APPROVED"
+    CLOSED = "CLOSED"
+
+
+class CommentSeverity(StrEnum):
+    """Severidad de un comentario de revisión."""
+
+    INFO = "INFO"
+    SUGGESTION = "SUGGESTION"
+    WARNING = "WARNING"
+    BLOCKING = "BLOCKING"
+
+
+class CommentStatus(StrEnum):
+    """Estado no destructivo de un comentario."""
+
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
+    DISMISSED = "DISMISSED"
+
+
+class ExportFormat(StrEnum):
+    """Formatos persistibles de 004; HTML no es un artefacto persistido."""
+
+    DOCX = "DOCX"
+    PDF = "PDF"
+
+
+class ExportStatus(StrEnum):
+    """Estados del pipeline de artefactos."""
+
+    PENDING = "PENDING"
+    GENERATING = "GENERATING"
+    GENERATED = "GENERATED"
+    FAILED = "FAILED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+DocumentExportStatus = ExportStatus
+
+
+class ExportAttemptStatus(StrEnum):
+    """Estados de cada intento de procesamiento."""
+
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
+class ReviewOperationStatus(StrEnum):
+    """Estados de una solicitud idempotente de revisión."""
+
+    PROCESSING = "PROCESSING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"

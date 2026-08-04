@@ -8,6 +8,8 @@ from fastapi import APIRouter, Header, Query, Request, Response
 
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.application.draft_service import DraftService
+from legal_ai.application.finalization_service import FinalizationService
+from legal_ai.application.preview_service import PreviewService
 from legal_ai.domain.enums import GenerationStatus
 from legal_ai.schemas.draft import (
     DraftResponse,
@@ -18,9 +20,74 @@ from legal_ai.schemas.draft import (
     TransitionDraftRequest,
 )
 from legal_ai.schemas.errors import ErrorResponse
+from legal_ai.schemas.finalization import FinalizationResponse, FinalizeDraftRequest
 from legal_ai.schemas.pagination import PaginatedResponse
 
 router = APIRouter(tags=["drafts"])
+
+
+@router.post(
+    "/api/v1/drafts/{draft_id}/finalize",
+    response_model=FinalizationResponse,
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
+)
+async def finalize_draft(
+    request: Request,
+    response: Response,
+    draft_id: UUID,
+    body: FinalizeDraftRequest,
+) -> FinalizationResponse:
+    async with UnitOfWork() as uow:
+        result = await FinalizationService(uow).finalize(
+            draft_id,
+            body.expected_version,
+            body.finalized_by,
+            body.finalization_notes,
+            str(getattr(request.state, "request_id", "")),
+        )
+    response.status_code = result.status_code
+    if result.draft.finalized_at is None:
+        raise RuntimeError("finalization invariant violated")
+    return FinalizationResponse(
+        draft_id=result.draft.id,
+        draft_version=result.draft.version,
+        finalized_by=result.draft.finalized_by or "",
+        finalized_at=result.draft.finalized_at,
+        finalization_notes=result.draft.finalization_notes,
+        final_snapshot=result.snapshot,
+        final_snapshot_sha256=result.sha256,
+    )
+
+
+@router.get(
+    "/api/v1/drafts/{draft_id}/preview",
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        413: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
+)
+async def preview_draft(
+    request: Request,
+    draft_id: UUID,
+    draft_version: int = Query(..., gt=0),
+) -> Response:
+    async with UnitOfWork() as uow:
+        result = await PreviewService(uow).preview(draft_id, draft_version)
+    return Response(
+        content=result.html,
+        media_type="text/html",
+        headers={
+            "ETag": f'"sha256:{result.sha256}"',
+            "Cache-Control": "no-store",
+            "X-Request-ID": str(getattr(request.state, "request_id", "")),
+        },
+    )
 
 
 @router.post(
