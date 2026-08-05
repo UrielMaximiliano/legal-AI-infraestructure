@@ -1,0 +1,9 @@
+{
+  "command": "uv run --with pip-audit pip-audit",
+  "date": "2026-08-05",
+  "status": "passed",
+  "vulnerabilities": [],
+  "local_project": "legal-ai-api (not published; skipped by pip-audit)",
+  "credentials_emitted": false,
+  "corpus_content_emitted": false
+}

@@ -21,8 +21,16 @@ _HTTP_ERROR_MAP: dict[int, tuple[HealthStatus, str]] = {
 class OllamaHealthAdapter(OllamaHealthPort):
     """Adaptador para verificación de salud de Ollama."""
 
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        expected_model: str | None = None,
+        expected_dimensions: int | None = None,
+    ) -> None:
         self._client = client
+        self._expected_model = expected_model
+        self._expected_dimensions = expected_dimensions
 
     async def check(self) -> DependencyHealth:
         """Verifica la conectividad con Ollama usando GET /api/version."""
@@ -74,6 +82,32 @@ class OllamaHealthAdapter(OllamaHealthPort):
                     message="Campo 'version' ausente o no es string no vacío",
                 )
 
+            if self._expected_model is not None:
+                show = await self._client.post(
+                    "/api/show", json={"name": self._expected_model}
+                )
+                if show.status_code != 200:
+                    return DependencyHealth(
+                        status=HealthStatus.MISCONFIGURED,
+                        latency_ms=latency_ms,
+                        error_code="OLLAMA_MODEL_INCOMPATIBLE",
+                    )
+                body = show.json()
+                model_info = body.get("model_info") if isinstance(body, dict) else None
+                if not isinstance(model_info, dict):
+                    return DependencyHealth(
+                        status=HealthStatus.INVALID_RESPONSE,
+                        latency_ms=latency_ms,
+                        error_code="OLLAMA_MODEL_INFO_INVALID",
+                    )
+                if self._expected_dimensions is not None:
+                    observed = model_info.get("qwen3.embedding_length")
+                    if observed != self._expected_dimensions:
+                        return DependencyHealth(
+                            status=HealthStatus.MISCONFIGURED,
+                            latency_ms=latency_ms,
+                            error_code="OLLAMA_DIMENSIONS_INCOMPATIBLE",
+                        )
             return DependencyHealth(
                 status=HealthStatus.OK,
                 latency_ms=latency_ms,

@@ -1,0 +1,49 @@
+{
+  "executed_at": "2026-08-04T13:28:56.608380Z",
+  "endpoint": "https://pc-rtx5090.tailc4e86c.ts.net",
+  "ollama_version": "0.32.5",
+  "model": "qwen3-embedding:8b-q8_0",
+  "evidence_status": "superseded_for_g1_after_model_change_to_qwen3_embedding_0_6b",
+  "model_digest": "9704fd987c12aa746934ea9f99dc85527c83c6e4b98b3a10b94689332ee866bb",
+  "model_size_bytes": 8047106087,
+  "model_details": {
+    "format": "gguf",
+    "family": "qwen3",
+    "families": [
+      "qwen3"
+    ],
+    "parameter_size": "7.6B",
+    "quantization_level": "Q8_0"
+  },
+  "model_capabilities": [
+    "tools",
+    "embedding"
+  ],
+  "version_duration_ms": 1245.652,
+  "show_duration_ms": 1678.095,
+  "native_dimensions": null,
+  "dimensions_1024_supported": null,
+  "batch_supported": null,
+  "document_query_compatible": null,
+  "stability": null,
+  "keep_alive": null,
+  "error_cases": null,
+  "status": "blocked",
+  "execution_origin": "local_workstation_external_route",
+  "required_route": "local_or_docker_to_https_to_tailscale_funnel_or_nginx_to_remote_ollama",
+  "blocker": {
+    "stage": "native_embedding",
+    "method": "POST",
+    "path": "/api/embed",
+    "http_status": 404,
+    "error": "not found",
+    "duration_ms": 1436.531,
+    "tls_connectivity": "working",
+    "fallback_local": "auxiliary_only_and_not_sufficient_to_close_g1",
+    "ssh_probe": "tcp_port_22_timeout"
+  },
+  "contractual_dimensions": null,
+  "g1_status": "PENDING_EMPIRICAL_VERIFICATION",
+  "g1_closure_requires_external_route": true,
+  "verdict": "NEEDS_RESEARCH"
+}

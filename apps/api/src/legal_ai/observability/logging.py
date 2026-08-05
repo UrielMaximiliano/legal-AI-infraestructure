@@ -25,12 +25,20 @@ _ALLOWED_FIELDS = frozenset(
         "review_id",
         "export_id",
         "attempt_id",
+        "ingestion_run_id",
+        "batch_id",
+        "query_id",
+        "document_id",
+        "model",
+        "dimensions",
+        "priority",
         "format",
         "export_version",
         "attempt_number",
         "renderer",
         "phase",
         "operation",
+        "stage",
         "status",
         "result",
         "duration_ms",
@@ -47,6 +55,7 @@ _ALLOWED_FIELDS = frozenset(
         "conflicts",
         "errors",
         "count",
+        "result_count",
     }
 )
 _HASH_FIELDS = frozenset({"sha256"})
@@ -59,6 +68,10 @@ _ID_FIELDS = frozenset(
         "review_id",
         "export_id",
         "attempt_id",
+        "ingestion_run_id",
+        "batch_id",
+        "query_id",
+        "document_id",
     }
 )
 _SAFE_EVENT_CHARS = frozenset(
@@ -132,7 +145,15 @@ def log_event(
         if sanitized is not None:
             payload[key] = sanitized
     target = logger or logging.getLogger("legal_ai.004")
-    target.log(level, "structured_event", extra={"structured_event": payload})
+    # Keep the sanitized payload in the message as well as in the structured
+    # record.  This makes the event observable through handlers that only
+    # render ``record.getMessage()`` (for example pytest's caplog handler)
+    # without ever exposing fields that were not allow-listed above.
+    target.log(
+        level,
+        json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        extra={"structured_event": payload},
+    )
 
 
 def _sanitize_field(key: str, value: Any) -> object | None:

@@ -127,6 +127,7 @@ class ContentTooLarge004Error(DomainError):
         self.size = size
         self.limit = limit
         super().__init__(details={"size": size, "limit": limit})
+
     default_message = "El contenido excede el límite permitido"
 
 
@@ -268,3 +269,27 @@ class RangeNotSupportedError(DomainError):
     code = "RANGE_NOT_SUPPORTED"
     status_code = 416
     default_message = "Las solicitudes Range no están soportadas"
+
+
+class CorpusDocumentNotFoundError(DomainError):
+    code = "CORPUS_DOCUMENT_NOT_FOUND"
+    status_code = 404
+    default_message = "El documento del corpus no existe"
+
+
+class CorpusReviewVersionMismatchError(DomainError):
+    code = "CORPUS_REVIEW_VERSION_MISMATCH"
+    status_code = 409
+    default_message = "La version de revision ya no es la esperada"
+
+
+class InvalidCorpusReviewTransitionError(DomainError):
+    code = "INVALID_CORPUS_REVIEW_TRANSITION"
+    status_code = 409
+    default_message = "La transicion de revision del corpus no esta permitida"
+
+
+class SemanticSearchAuditUnavailableError(DomainError):
+    code = "SEMANTIC_SEARCH_AUDIT_UNAVAILABLE"
+    status_code = 503
+    default_message = "La auditoria de busqueda no esta disponible"

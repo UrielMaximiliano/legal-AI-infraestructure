@@ -36,6 +36,9 @@ def _run_alembic(*arguments: str) -> None:
 
 @pytest.mark.integration
 async def test_004_upgrade_and_downgrade_round_trip() -> None:
+    # 005 is now the repository head; reset explicitly so this historical
+    # compatibility test exercises the 004 boundary it names.
+    _run_alembic("downgrade", "003")
     _run_alembic("upgrade", "004")
     engine = create_engine()
     try:
@@ -74,6 +77,7 @@ async def test_004_upgrade_and_downgrade_round_trip() -> None:
 
 @pytest.mark.integration
 async def test_004_preserves_existing_003_columns_and_states() -> None:
+    _run_alembic("downgrade", "003")
     _run_alembic("upgrade", "004")
     engine = create_engine()
     try:

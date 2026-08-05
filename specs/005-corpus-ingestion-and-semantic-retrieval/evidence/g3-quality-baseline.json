@@ -1,0 +1,19 @@
+{
+  "gate": "G3",
+  "status": "INFORMATIVE_NON_BLOCKING",
+  "dataset_version": "005-corpus-v1",
+  "query_count": 2,
+  "precision_at_3": 0.3333333333333333,
+  "precision_at_5": 0.2,
+  "recall_at_3": 0.75,
+  "recall_at_5": 0.75,
+  "mrr": 0.75,
+  "usefulness_average": 4.5,
+  "legally_relevant_percent": 100.0,
+  "latency_p50_ms": 12.0,
+  "latency_p95_ms": 18.0,
+  "latency_max_ms": 18.0,
+  "threshold_defined": false,
+  "blocks_ci": false,
+  "query_text_emitted": false
+}

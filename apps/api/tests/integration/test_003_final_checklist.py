@@ -88,7 +88,7 @@ def test_003_error_state_and_excluded_scope_checklist() -> None:
     assert "prompt_content" in source
     assert not (source_root.parent.parent / "frontend").exists()
     forbidden_dirs = {
-        "embeddings",
+        # Incremento 005 intentionally adds the replaceable embeddings adapter.
         "redis",
         "pdf",
         "docx",

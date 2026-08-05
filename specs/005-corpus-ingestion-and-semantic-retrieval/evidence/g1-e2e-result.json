@@ -1,0 +1,15 @@
+{
+  "gate": "G1-B",
+  "status": "BLOCKED_EXTERNAL",
+  "path": "Docker/local -> HTTPS/Bearer -> Tailscale Funnel/Nginx -> Ollama remoto",
+  "model": "qwen3-embedding:0.6b",
+  "dimensions": 1024,
+  "version_status": 200,
+  "show_status": 200,
+  "embed_status": 404,
+  "embed_error_code": "G1_EMBED_FAILED",
+  "vectors_emitted": false,
+  "tokens_emitted": false,
+  "query_content_emitted": false,
+  "decision": "No se cierra G1-B: la ruta externa no expone /api/embed contractual. Requiere correcciÃ³n de Funnel/Nginx o endpoint remoto y un Ãºnico retest desde Docker/local."
+}

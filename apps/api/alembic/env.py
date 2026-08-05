@@ -1,3 +1,5 @@
+# ruff: noqa: E402, F401
+
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +16,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from legal_ai.adapters.database.models import Base  # noqa: E402
+from legal_ai.adapters.database import (
+    corpus_models,
+    ingestion_models,
+    semantic_search_models,
+)
+from legal_ai.adapters.database.models import Base
 
 target_metadata = Base.metadata
 
