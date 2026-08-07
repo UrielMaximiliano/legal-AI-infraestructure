@@ -39,6 +39,7 @@ htmlcov/
 
 # uv
 uv.lock
+!apps/api/uv.lock
 .python-version
 
 # Documentation
@@ -46,3 +47,5 @@ uv.lock
 !README.md
 !specs/**/*.md
 !.specify/**/*.md
+!docs/
+!docs/**/*.md

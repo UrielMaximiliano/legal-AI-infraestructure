@@ -10,6 +10,12 @@ from legal_ai.adapters.database.case_file_repository import (
 from legal_ai.adapters.database.case_status_history_repository import (
     SQLAlchemyCaseStatusHistoryRepository,
 )
+from legal_ai.adapters.database.corpus_chunk_repository import (
+    SQLAlchemyCorpusChunkRepository,
+)
+from legal_ai.adapters.database.corpus_document_repository import (
+    SQLAlchemyCorpusDocumentRepository,
+)
 from legal_ai.adapters.database.designation_repository import (
     SQLAlchemyDesignationRepository,
 )
@@ -30,6 +36,12 @@ from legal_ai.adapters.database.export_attempt_repository import (
 from legal_ai.adapters.database.generation_attempt_repository import (
     SQLAlchemyGenerationAttemptRepository,
 )
+from legal_ai.adapters.database.ingestion_repositories import (
+    SQLAlchemyEmbeddingBatchRepository,
+    SQLAlchemyIngestionFailureRepository,
+    SQLAlchemyIngestionRunRepository,
+)
+from legal_ai.adapters.database.pgvector_search import ExactVectorSearchRepository
 from legal_ai.adapters.database.review_comment_repository import (
     SQLAlchemyReviewCommentRepository,
 )
@@ -39,6 +51,10 @@ from legal_ai.adapters.database.review_event_repository import (
 from legal_ai.adapters.database.review_repository import (
     SQLAlchemyReviewOperationRequestRepository,
     SQLAlchemyReviewRepository,
+)
+from legal_ai.adapters.database.semantic_search_repository import (
+    SQLAlchemyHumanRetrievalEvaluationRepository,
+    SQLAlchemySemanticSearchRunRepository,
 )
 from legal_ai.adapters.database.template_repository import (
     SQLAlchemyTemplateRepository,
@@ -67,6 +83,16 @@ class UnitOfWork:
         self._review_events: SQLAlchemyReviewEventRepository | None = None
         self._document_exports: SQLAlchemyDocumentExportRepository | None = None
         self._export_attempts: SQLAlchemyExportAttemptRepository | None = None
+        self._corpus_documents: SQLAlchemyCorpusDocumentRepository | None = None
+        self._corpus_chunks: SQLAlchemyCorpusChunkRepository | None = None
+        self._ingestion_runs: SQLAlchemyIngestionRunRepository | None = None
+        self._ingestion_failures: SQLAlchemyIngestionFailureRepository | None = None
+        self._embedding_batches: SQLAlchemyEmbeddingBatchRepository | None = None
+        self._semantic_search_runs: SQLAlchemySemanticSearchRunRepository | None = None
+        self._human_retrieval_evaluations: (
+            SQLAlchemyHumanRetrievalEvaluationRepository | None
+        ) = None
+        self._vector_search: ExactVectorSearchRepository | None = None
 
     async def __aenter__(self) -> UnitOfWork:
         self._session = AsyncSession(self._engine, expire_on_commit=False)
@@ -87,6 +113,18 @@ class UnitOfWork:
         self._review_events = SQLAlchemyReviewEventRepository(self._session)
         self._document_exports = SQLAlchemyDocumentExportRepository(self._session)
         self._export_attempts = SQLAlchemyExportAttemptRepository(self._session)
+        self._corpus_documents = SQLAlchemyCorpusDocumentRepository(self._session)
+        self._corpus_chunks = SQLAlchemyCorpusChunkRepository(self._session)
+        self._ingestion_runs = SQLAlchemyIngestionRunRepository(self._session)
+        self._ingestion_failures = SQLAlchemyIngestionFailureRepository(self._session)
+        self._embedding_batches = SQLAlchemyEmbeddingBatchRepository(self._session)
+        self._semantic_search_runs = SQLAlchemySemanticSearchRunRepository(
+            self._session
+        )
+        self._human_retrieval_evaluations = (
+            SQLAlchemyHumanRetrievalEvaluationRepository(self._session)
+        )
+        self._vector_search = ExactVectorSearchRepository(self._session)
         return self
 
     async def __aexit__(
@@ -97,10 +135,15 @@ class UnitOfWork:
     ) -> None:
         if self._session is None:
             return
-        if exc_type is not None:
-            await self.rollback()
-        else:
-            await self.commit()
+        try:
+            if exc_type is not None:
+                await self.rollback()
+            else:
+                await self.commit()
+        finally:
+            await self._session.close()
+            await self._engine.dispose()
+            self._session = None
 
     async def commit(self) -> None:
         if self._session is not None:
@@ -195,3 +238,53 @@ class UnitOfWork:
         if self._export_attempts is None:
             raise RuntimeError("UnitOfWork not initialized")
         return self._export_attempts
+
+    @property
+    def corpus_documents(self) -> SQLAlchemyCorpusDocumentRepository:
+        if self._corpus_documents is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._corpus_documents
+
+    @property
+    def corpus_chunks(self) -> SQLAlchemyCorpusChunkRepository:
+        if self._corpus_chunks is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._corpus_chunks
+
+    @property
+    def ingestion_runs(self) -> SQLAlchemyIngestionRunRepository:
+        if self._ingestion_runs is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._ingestion_runs
+
+    @property
+    def ingestion_failures(self) -> SQLAlchemyIngestionFailureRepository:
+        if self._ingestion_failures is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._ingestion_failures
+
+    @property
+    def embedding_batches(self) -> SQLAlchemyEmbeddingBatchRepository:
+        if self._embedding_batches is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._embedding_batches
+
+    @property
+    def semantic_search_runs(self) -> SQLAlchemySemanticSearchRunRepository:
+        if self._semantic_search_runs is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._semantic_search_runs
+
+    @property
+    def human_retrieval_evaluations(
+        self,
+    ) -> SQLAlchemyHumanRetrievalEvaluationRepository:
+        if self._human_retrieval_evaluations is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._human_retrieval_evaluations
+
+    @property
+    def vector_search(self) -> ExactVectorSearchRepository:
+        if self._vector_search is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._vector_search

@@ -174,9 +174,7 @@ class LocalArtifactStorage:
         for current, directories, files in os.walk(self._root, followlinks=False):
             current_path = Path(current)
             directories[:] = [
-                name
-                for name in directories
-                if not (current_path / name).is_symlink()
+                name for name in directories if not (current_path / name).is_symlink()
             ]
             for name in files:
                 path = current_path / name

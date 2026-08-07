@@ -29,7 +29,11 @@ def _get_health_service() -> HealthService:
     engine = create_engine()
     db_adapter = PostgreSQLHealthAdapter(engine)
     client = create_ollama_client()
-    ollama_adapter = OllamaHealthAdapter(client)
+    ollama_adapter = OllamaHealthAdapter(
+        client,
+        expected_model=settings.embedding.model,
+        expected_dimensions=settings.embedding.dimensions,
+    )
     return HealthService(db_adapter, ollama_adapter)
 
 
@@ -103,6 +107,28 @@ async def health_dependencies(
                     latency_ms=result.ollama.latency_ms,
                     error_code=result.ollama.error_code,
                     message=result.ollama.message,
+                ),
+                "semantic_retrieval": DependencyHealthSchema(
+                    status=(
+                        result.semantic_retrieval.status.value
+                        if result.semantic_retrieval is not None
+                        else result.ollama.status.value
+                    ),
+                    latency_ms=(
+                        result.semantic_retrieval.latency_ms
+                        if result.semantic_retrieval is not None
+                        else result.ollama.latency_ms
+                    ),
+                    error_code=(
+                        result.semantic_retrieval.error_code
+                        if result.semantic_retrieval is not None
+                        else result.ollama.error_code
+                    ),
+                    message=(
+                        result.semantic_retrieval.message
+                        if result.semantic_retrieval is not None
+                        else result.ollama.message
+                    ),
                 ),
             },
         )

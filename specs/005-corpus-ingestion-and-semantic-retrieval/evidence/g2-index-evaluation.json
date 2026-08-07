@@ -1,0 +1,23 @@
+{
+  "gate": "G2",
+  "status": "INFORMATIVE_BASELINE",
+  "fixture": "temporary synthetic 5000 rows; transaction rolled back",
+  "exact_search": {
+    "enabled": true,
+    "metric": "cosine",
+    "dimension": 1024,
+    "observed_execution_ms": 0.755,
+    "representative_execution_ms": 34.409,
+    "representative_plan": "Limit -> Sort -> Seq Scan"
+  },
+  "hnsw": {
+    "enabled": false,
+    "comparison_status": "BENCHMARKED_TEMPORARILY",
+    "temporary_execution_ms": 0.423,
+    "temporary_plan": "Limit -> Index Scan",
+    "ef_search": 100,
+    "recall_at_20": 1.0,
+    "persisted": false
+  },
+  "decision": "Keep exact search as MVP baseline; do not enable HNSW without EXPLAIN and recall evidence."
+}

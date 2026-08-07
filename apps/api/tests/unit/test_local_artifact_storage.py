@@ -27,9 +27,7 @@ def test_deterministic_layout_and_atomic_rename(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", ["/absolute.pdf", "../escape.pdf", "a\\b.pdf"])
-def test_traversal_and_absolute_paths_are_rejected(
-    tmp_path: Path, path: str
-) -> None:
+def test_traversal_and_absolute_paths_are_rejected(tmp_path: Path, path: str) -> None:
     with pytest.raises(PathValidationError):
         LocalArtifactStorage(tmp_path).resolve_relative(path)
 

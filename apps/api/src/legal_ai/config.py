@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
+
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 
 
 class AppConfig(BaseSettings):
@@ -64,16 +66,146 @@ class OllamaConfig(BaseSettings):
 
     model_config = {"env_prefix": "OLLAMA_"}
 
-    base_url: str = Field(default="", alias="OLLAMA_BASE_URL")
-    api_token: str = Field(default="", alias="OLLAMA_API_TOKEN")
-    timeout_seconds: int = Field(default=5, alias="OLLAMA_TIMEOUT_SECONDS", gt=0, le=30)
+    base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("OLLAMA_EMBEDDING_BASE_URL", "OLLAMA_BASE_URL"),
+        serialization_alias="OLLAMA_EMBEDDING_BASE_URL",
+    )
+    api_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("OLLAMA_EMBEDDING_TOKEN", "OLLAMA_API_TOKEN"),
+        serialization_alias="OLLAMA_EMBEDDING_TOKEN",
+    )
+    timeout_seconds: int = Field(
+        default=5,
+        validation_alias=AliasChoices(
+            "OLLAMA_EMBEDDING_TIMEOUT_SECONDS", "OLLAMA_TIMEOUT_SECONDS"
+        ),
+        serialization_alias="OLLAMA_EMBEDDING_TIMEOUT_SECONDS",
+        gt=0,
+        le=30,
+    )
+    endpoint: str = Field(
+        default="/api/embed",
+        validation_alias=AliasChoices("OLLAMA_EMBEDDING_ENDPOINT"),
+        serialization_alias="OLLAMA_EMBEDDING_ENDPOINT",
+    )
 
     def model_post_init(self, __context: object) -> None:
         """Valida que base_url y api_token estén configurados."""
         if not self.base_url:
             raise ValueError("OLLAMA_BASE_URL es obligatoria")
         if not self.api_token:
-            raise ValueError("OLLAMA_API_TOKEN es obligatorio")
+            raise ValueError("OLLAMA_EMBEDDING_TOKEN es obligatorio")
+        if self.endpoint not in {"/api/embed", "/api/embeddings"}:
+            raise ValueError("OLLAMA_EMBEDDING_ENDPOINT_INVALID")
+
+
+class EmbeddingConfig(BaseSettings):
+    """Contrato de embeddings de 005 (dimension nativa comprobada)."""
+
+    model_config = {"extra": "ignore"}
+
+    model: str = Field(default=EMBEDDING_MODEL, alias="OLLAMA_EMBEDDING_MODEL")
+    dimensions: int = Field(
+        default=EMBEDDING_DIMENSIONS, alias="EMBEDDING_DIMENSIONS", gt=0
+    )
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> "EmbeddingConfig":
+        if self.model != EMBEDDING_MODEL:
+            raise ValueError("OLLAMA_EMBEDDING_MODEL no coincide con el contrato 005")
+        if self.dimensions != EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}"
+            )
+        return self
+
+
+class CorpusConfig(BaseSettings):
+    """Límites de seguridad para descubrimiento e inferencia de corpus."""
+
+    model_config = {"extra": "ignore"}
+
+    embedding_batch_size: int = Field(
+        default=16,
+        validation_alias=AliasChoices(
+            "OLLAMA_EMBEDDING_BATCH_SIZE", "CORPUS_EMBEDDING_BATCH_SIZE"
+        ),
+        serialization_alias="OLLAMA_EMBEDDING_BATCH_SIZE",
+        gt=0,
+        le=256,
+    )
+    embedding_timeout_seconds: int = Field(
+        default=30,
+        validation_alias=AliasChoices(
+            "OLLAMA_EMBEDDING_TIMEOUT_SECONDS", "CORPUS_EMBEDDING_TIMEOUT_SECONDS"
+        ),
+        serialization_alias="OLLAMA_EMBEDDING_TIMEOUT_SECONDS",
+        gt=0,
+        le=30,
+    )
+    max_input_bytes: int = Field(
+        default=2 * 1024 * 1024,
+        validation_alias=AliasChoices(
+            "CORPUS_MAX_FILE_SIZE_BYTES", "CORPUS_MAX_INPUT_BYTES"
+        ),
+        serialization_alias="CORPUS_MAX_FILE_SIZE_BYTES",
+        gt=0,
+    )
+    max_files: int = Field(
+        default=10_000,
+        validation_alias=AliasChoices("CORPUS_MAX_BATCH_FILES", "CORPUS_MAX_FILES"),
+        serialization_alias="CORPUS_MAX_BATCH_FILES",
+        gt=0,
+    )
+    max_chunks: int = Field(default=100_000, alias="CORPUS_MAX_CHUNKS", gt=0)
+    max_queue_size: int = Field(
+        default=32,
+        validation_alias=AliasChoices(
+            "EMBEDDING_QUEUE_MAX_SIZE", "CORPUS_MAX_QUEUE_SIZE"
+        ),
+        serialization_alias="EMBEDDING_QUEUE_MAX_SIZE",
+        gt=0,
+    )
+    wait_timeout_seconds: int = Field(
+        default=30,
+        validation_alias=AliasChoices(
+            "EMBEDDING_WAIT_TIMEOUT_SECONDS", "CORPUS_WAIT_TIMEOUT_SECONDS"
+        ),
+        serialization_alias="EMBEDDING_WAIT_TIMEOUT_SECONDS",
+        gt=0,
+        le=300,
+    )
+    allowed_extensions: tuple[str, ...] = Field(
+        default=(".txt", ".json", ".html"), alias="CORPUS_ALLOWED_EXTENSIONS"
+    )
+
+    @field_validator("allowed_extensions")
+    @classmethod
+    def normalize_extensions(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(
+            extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+            for extension in value
+        )
+        if not normalized:
+            raise ValueError("CORPUS_ALLOWED_EXTENSIONS no puede estar vacía")
+        return normalized
+
+
+class SemanticSearchConfig(BaseSettings):
+    """Límites y filtros contractuales de búsqueda semántica."""
+
+    model_config = {"extra": "ignore"}
+
+    reviewed_only: bool = Field(default=True, alias="SEMANTIC_SEARCH_REVIEWED_ONLY")
+    max_top_k: int = Field(default=50, alias="SEMANTIC_SEARCH_MAX_TOP_K", gt=0, le=1000)
+    timeout_seconds: int = Field(
+        default=10, alias="SEMANTIC_SEARCH_TIMEOUT_SECONDS", gt=0, le=120
+    )
+    minimum_score: float = Field(
+        default=0.0, alias="SEMANTIC_SEARCH_MINIMUM_SCORE", ge=0.0, le=1.0
+    )
 
 
 class ExportConfig(BaseSettings):
@@ -150,6 +282,9 @@ class Settings:
         self.logging = LoggingConfig()
         self.postgres = PostgreSQLConfig()
         self.export = ExportConfig()
+        self.embedding = EmbeddingConfig()
+        self.corpus = CorpusConfig()
+        self.semantic_search = SemanticSearchConfig()
         self._ollama: OllamaConfig | None = None
 
     @property

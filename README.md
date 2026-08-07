@@ -1,5 +1,23 @@
 # legal-AI-infraestructure
 
+Las variables contractuales de Ollama para embeddings son `OLLAMA_EMBEDDING_BASE_URL`,
+`OLLAMA_EMBEDDING_TOKEN` y `OLLAMA_EMBEDDING_TIMEOUT_SECONDS`. Los nombres
+`OLLAMA_BASE_URL`, `OLLAMA_API_TOKEN` y `OLLAMA_TIMEOUT_SECONDS` se mantienen
+únicamente como aliases explícitos de compatibilidad con 001â€“004.
+La referencia histórica a `OLLAMA_API_TOKEN` en el párrafo operativo de 005 significa
+ese alias; las instalaciones nuevas deben usar `OLLAMA_EMBEDDING_TOKEN`.
+
+## Incremento 005: ingesta y recuperación semántica
+
+La configuración contractual usa `qwen3-embedding:4b-q4_K_M` con `EMBEDDING_DIMENSIONS=2560`
+(`halfvec(2560)`). La búsqueda filtra `REVIEWED` por defecto y la ingesta es dry-run
+salvo que se indique explícitamente `--execute`. `OLLAMA_API_TOKEN` se suministra
+únicamente por el entorno; nunca se registra ni se persiste. La ruta de producción
+es local Docker → HTTPS/Bearer → Ollama remoto. Configure
+`OLLAMA_EMBEDDING_ENDPOINT=/api/embed` para batch nativo o
+`/api/embeddings` para el proxy externo legado (batch secuencial a nivel de
+aplicación); no existe fallback implícito.
+
 ## Incremento 004: revisión humana y exportación documental
 
 El incremento 004 agrega revisión humana, finalización write-once, preview y
@@ -96,3 +114,19 @@ completa de DOCX/PDF.
 
 Para el entorno operativo y el smoke completo, consultar
 [specs/004-document-review-and-export/quickstart.md](specs/004-document-review-and-export/quickstart.md).
+
+## Incremento 005: corpus y búsqueda semántica
+
+```bash
+corpus ingest ./corpus
+corpus ingest ./corpus --execute --run-id <opaque-run-id>
+corpus reindex --document-id <uuid>
+corpus reindex --document-id <uuid> --execute --run-id <opaque-run-id>
+```
+
+La ingesta dry-run no solicita embeddings ni escribe PostgreSQL. La ejecución y
+reindexación usan `qwen3-embedding:4b-q4_K_M` con 2560 dimensiones, generaciones
+STAGED y swap atómico. La búsqueda `POST /api/v1/semantic-search` exige los
+filtros MVP y devuelve solo documentos `REVIEWED` por defecto; su auditoría es
+fail-closed. Consulte [docs/corpus-semantic-retrieval.md](docs/corpus-semantic-retrieval.md)
+para límites, evaluación y seguridad.

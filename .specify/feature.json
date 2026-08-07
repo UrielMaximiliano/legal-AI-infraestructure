@@ -1,1 +1,3 @@
-{"feature_directory": "specs/004-document-review-and-export"}
+{
+  "feature_directory": "specs/005-corpus-ingestion-and-semantic-retrieval"
+}

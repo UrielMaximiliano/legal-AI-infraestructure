@@ -59,6 +59,35 @@ class TestOllamaConfig:
 
         os.environ["OLLAMA_TIMEOUT_SECONDS"] = "5"
 
+    def test_embedding_names_are_preferred_with_legacy_compatibility(self) -> None:
+        from legal_ai.config import OllamaConfig
+
+        config = OllamaConfig(
+            OLLAMA_EMBEDDING_BASE_URL="https://ollama.example",
+            OLLAMA_EMBEDDING_TOKEN="embedding-token",
+            OLLAMA_EMBEDDING_TIMEOUT_SECONDS=7,
+        )
+        assert config.base_url == "https://ollama.example"
+        assert config.api_token == "embedding-token"
+        assert config.timeout_seconds == 7
+
+    def test_embedding_endpoint_profile(self) -> None:
+        from legal_ai.config import OllamaConfig
+
+        config = OllamaConfig(
+            OLLAMA_EMBEDDING_BASE_URL="https://ollama.example",
+            OLLAMA_EMBEDDING_TOKEN="embedding-token",
+            OLLAMA_EMBEDDING_ENDPOINT="/api/embeddings",
+        )
+        assert config.endpoint == "/api/embeddings"
+
+        with pytest.raises(ValueError, match="ENDPOINT"):
+            OllamaConfig(
+                OLLAMA_EMBEDDING_BASE_URL="https://ollama.example",
+                OLLAMA_EMBEDDING_TOKEN="embedding-token",
+                OLLAMA_EMBEDDING_ENDPOINT="/api/unknown",
+            )
+
 
 class TestPostgreSQLConfig:
     """Pruebas para PostgreSQLConfig."""

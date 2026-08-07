@@ -1,0 +1,16 @@
+{
+  "gate": "G4",
+  "status": "CONFIGURATION_VALIDATED",
+  "model": "qwen3-embedding:4b-q4_K_M",
+  "dimensions": 2560,
+  "embedding_batch_size": 16,
+  "max_file_size_bytes": 2097152,
+  "max_batch_files": 10000,
+  "max_chunks": 100000,
+  "queue_max_size": 32,
+  "wait_timeout_seconds": 30,
+  "semantic_search_max_top_k": 50,
+  "semantic_search_timeout_seconds": 10,
+  "source": ".env.example and validated CorpusConfig/SemanticSearchConfig",
+  "sla_invented": false
+}

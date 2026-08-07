@@ -1,0 +1,27 @@
+{
+  "dataset_version": "005-queries-v1",
+  "cases": [
+    {
+      "query_id": "q1",
+      "text": "designacion transitoria",
+      "document_type": "decreto",
+      "document_subtype": "designacion_transitoria",
+      "jurisdiction": "nacion",
+      "expected_ids": ["doc-1"],
+      "relevant_ids": ["doc-1", "doc-4"],
+      "section": "ARTICLE",
+      "difficulty": "easy"
+    },
+    {
+      "query_id": "q2",
+      "text": "expediente y autoridad",
+      "document_type": "decreto",
+      "document_subtype": "designacion_transitoria",
+      "jurisdiction": "nacion",
+      "expected_ids": ["doc-6"],
+      "relevant_ids": ["doc-6"],
+      "section": "VISTO",
+      "difficulty": "medium"
+    }
+  ]
+}

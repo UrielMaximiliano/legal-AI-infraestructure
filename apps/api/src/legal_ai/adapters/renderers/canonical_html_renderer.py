@@ -26,9 +26,7 @@ class SafeCanonicalHtmlRenderer:
             locale = self._text(document.get("locale", "es-AR"))
             source_text = self._text(snapshot.get("source_text", ""))
             sections = self._section("VISTO", document.get("visto", []))
-            sections += self._section(
-                "CONSIDERANDO", document.get("considerando", [])
-            )
+            sections += self._section("CONSIDERANDO", document.get("considerando", []))
             por_ello = self._text(document.get("por_ello", ""))
             articles = self._articles(document.get("articles", []))
             signatures = self._signatures(document.get("signatures", []))
@@ -55,12 +53,12 @@ class SafeCanonicalHtmlRenderer:
                 + html.escape(locale, quote=True)
                 + '"><head><meta charset="utf-8">'
                 '<meta name="generator" content="legal-ai-canonical-html">'
-                '<style>body{font-family:Arial,sans-serif;font-size:11pt;'
+                "<style>body{font-family:Arial,sans-serif;font-size:11pt;"
                 "line-height:1.5;margin:2.5cm 2cm 2.5cm 3cm;text-align:justify;}"
                 "h1{font-size:12pt;text-align:center;font-weight:700;}"
                 "h2{font-size:11pt;font-weight:700;}.institutional{text-align:center;}"
-                'p{margin:0 0 6pt;} .signature{display:inline-block;min-width:6cm;'
-                'margin:2cm 1cm 0 0;text-align:center;}</style></head><body>'
+                "p{margin:0 0 6pt;} .signature{display:inline-block;min-width:6cm;"
+                "margin:2cm 1cm 0 0;text-align:center;}</style></head><body>"
                 + body
                 + "</body></html>"
             )
@@ -114,6 +112,11 @@ class SafeCanonicalHtmlRenderer:
     def _signatures(self, values: Any) -> str:
         if not isinstance(values, Iterable) or isinstance(values, (str, bytes)):
             return ""
-        return '<section class="signatures">' + "".join(
-            f'<span class="signature">{self._text(value)}</span>' for value in values
-        ) + "</section>"
+        return (
+            '<section class="signatures">'
+            + "".join(
+                f'<span class="signature">{self._text(value)}</span>'
+                for value in values
+            )
+            + "</section>"
+        )

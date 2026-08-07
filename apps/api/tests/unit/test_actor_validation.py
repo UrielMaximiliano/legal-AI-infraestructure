@@ -29,7 +29,7 @@ def test_review_actor_fields_are_textual_and_not_identifiers() -> None:
         opened_by="Reviewer-01@organismo",
     )
     assert request.opened_by == "Reviewer-01@organismo"
-    assert "actor_id" not in request.model_fields
+    assert "actor_id" not in ReviewCreateRequest.model_fields
 
 
 @pytest.mark.parametrize("value", ["short", "a" * 101, "unsafe/key-value"])

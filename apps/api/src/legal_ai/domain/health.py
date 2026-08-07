@@ -53,3 +53,4 @@ class HealthCheckResult:
     postgres: DependencyHealth
     pgvector: DependencyHealth
     ollama: DependencyHealth
+    semantic_retrieval: DependencyHealth | None = None

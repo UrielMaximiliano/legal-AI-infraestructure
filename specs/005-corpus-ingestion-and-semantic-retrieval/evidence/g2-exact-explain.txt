@@ -1,0 +1,24 @@
+G2 exact-search baseline (2026-08-05)
+Query shape: corpus_chunks ACTIVE joined to corpus_documents REVIEWED on
+document_id and active_generation, ordered by cosine distance, LIMIT 10.
+Vector literal: omitted from evidence by policy.
+
+Observed PostgreSQL plan (sanitized):
+Limit -> Sort -> Nested Loop
+  corpus_chunks: sequential scan (0 rows in the local fixture)
+  corpus_documents: sequential scan (join side not executed for empty fixture)
+Planning time: 1.461 ms
+Execution time: 0.755 ms
+Buffers: shared hit=4
+
+Representative-volume benchmark (temporary transaction, 5,000 synthetic rows,
+vector literals and row identifiers omitted):
+
+Exact: Limit -> Sort -> Seq Scan; execution 34.409 ms.
+HNSW (temporary index only, ef_search=100): Limit -> Index Scan; execution
+0.423 ms; recall@20 against exact = 1.0000.
+
+Decision: exact cosine search remains the MVP baseline. HNSW was used only for
+this rollback-safe benchmark and is not created by migration 005 or enabled by
+the application; production enablement remains conditioned on representative
+volume and repeatable evidence.
