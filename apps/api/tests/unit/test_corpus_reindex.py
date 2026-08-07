@@ -37,5 +37,33 @@ async def test_reindex_dry_run_is_deterministic_and_read_only(monkeypatch) -> No
     assert first.documents_reindexed == 0
 
 
+@pytest.mark.asyncio
+async def test_reindex_selection_paginates_beyond_repository_page_limit() -> None:
+    documents = tuple(_document() for _ in range(1001))
+    offsets: list[int] = []
+
+    class _Repository:
+        async def list(self, **kwargs):
+            offset = int(kwargs["offset"])
+            limit = int(kwargs["limit"])
+            offsets.append(offset)
+            return documents[offset : offset + limit]
+
+    class _UnitOfWork:
+        corpus_documents = _Repository()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    service = CorpusReindexService(uow_factory=_UnitOfWork)
+    selected = await service._select(CorpusReindexRequest())
+
+    assert len(selected) == 1001
+    assert offsets == [0, 1000]
+
+
 async def _one(document: CorpusDocument) -> tuple[CorpusDocument, ...]:
     return (document,)

@@ -194,9 +194,7 @@ class ReconcileService:
         return await self.reconcile(**kwargs)
 
     @staticmethod
-    def filters_hash(
-        filters: ReconcileFilters, actor: str, execute: bool
-    ) -> str:
+    def filters_hash(filters: ReconcileFilters, actor: str, execute: bool) -> str:
         payload = {
             "actor": actor,
             "execute": execute,
@@ -207,9 +205,7 @@ class ReconcileService:
         ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
-    async def _list_exports(
-        self, filters: ReconcileFilters
-    ) -> list[tuple[Any, UUID]]:
+    async def _list_exports(self, filters: ReconcileFilters) -> list[tuple[Any, UUID]]:
         repository = self._uow.document_exports
         method = getattr(repository, "list_for_reconcile", None)
         if method is None:
@@ -443,9 +439,7 @@ class ReconcileService:
                 )
             else:
                 fingerprint = self._fingerprint(relative)
-                first = await self._uow.review_events.get_orphan_detection(
-                    fingerprint
-                )
+                first = await self._uow.review_events.get_orphan_detection(fingerprint)
                 if first is None:
                     await self._uow.review_events.create(
                         ReviewEvent(
@@ -625,15 +619,10 @@ class ReconcileService:
         default_age: timedelta = timedelta(0),
     ) -> bool:
         value = (
-            self._parse_older_than(filters.older_than)
-            if filters.older_than
-            else None
+            self._parse_older_than(filters.older_than) if filters.older_than else None
         )
         if isinstance(value, datetime):
-            return (
-                created_at <= value
-                and self._now - created_at >= default_age
-            )
+            return created_at <= value and self._now - created_at >= default_age
         age = value if isinstance(value, timedelta) else default_age
         return self._now - created_at >= max(default_age, age)
 
@@ -668,10 +657,14 @@ class ReconcileService:
     def _file_has_processing_export(
         path: PurePosixPath, processing_keys: set[tuple[str, str]]
     ) -> bool:
-        return len(path.parts) >= 3 and (
-            path.parts[1],
-            path.parts[2],
-        ) in processing_keys
+        return (
+            len(path.parts) >= 3
+            and (
+                path.parts[1],
+                path.parts[2],
+            )
+            in processing_keys
+        )
 
     @staticmethod
     def _public_summary(summary: dict[str, Any]) -> dict[str, Any]:

@@ -40,9 +40,7 @@ async def test_semantic_search_uses_reviewed_active_generation_and_audits(
                 jurisdiction="nacion",
             )
             document = next(
-                item
-                for item in documents
-                if item.source_identifier == source
+                item for item in documents if item.source_identifier == source
             )
             document_id = document.id
         async with UnitOfWork() as uow:
@@ -121,8 +119,7 @@ async def test_semantic_search_uses_reviewed_active_generation_and_audits(
                 )
                 await connection.execute(
                     text(
-                        "DELETE FROM corpus_documents "
-                        "WHERE source_identifier = :source"
+                        "DELETE FROM corpus_documents WHERE source_identifier = :source"
                     ),
                     {"source": source},
                 )

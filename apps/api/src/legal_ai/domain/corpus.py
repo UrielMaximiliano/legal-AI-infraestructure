@@ -11,6 +11,8 @@ from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Literal
 
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
+
 
 class ReviewStatus(StrEnum):
     PENDING_REVIEW = "PENDING_REVIEW"
@@ -54,7 +56,9 @@ class CorpusDocumentNotFoundError(CorpusDomainError):
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def validate_embedding(vector: list[float], dimensions: int = 1024) -> None:
+def validate_embedding(
+    vector: list[float], dimensions: int = EMBEDDING_DIMENSIONS
+) -> None:
     if not vector:
         raise CorpusDomainError("EMBEDDING_VECTOR_EMPTY")
     if len(vector) != dimensions:
@@ -102,10 +106,14 @@ class CorpusDocument:
     def __post_init__(self) -> None:
         if not self.raw_content.strip():
             raise CorpusDomainError("CORPUS_RAW_CONTENT_EMPTY")
-        if self.ingestion_status not in {
-            CorpusIngestionStatus.DISCOVERED,
-            CorpusIngestionStatus.FAILED,
-        } and not self.normalized_content.strip():
+        if (
+            self.ingestion_status
+            not in {
+                CorpusIngestionStatus.DISCOVERED,
+                CorpusIngestionStatus.FAILED,
+            }
+            and not self.normalized_content.strip()
+        ):
             raise CorpusDomainError("CORPUS_NORMALIZED_CONTENT_EMPTY")
         if self.review_version <= 0:
             raise CorpusDomainError("CORPUS_REVIEW_VERSION_INVALID")
@@ -172,10 +180,14 @@ class CorpusDocument:
         }
         if status not in allowed[self.ingestion_status]:
             raise CorpusDomainError("CORPUS_INGESTION_TRANSITION_INVALID")
-        if status not in {
-            CorpusIngestionStatus.DISCOVERED,
-            CorpusIngestionStatus.FAILED,
-        } and not self.normalized_content.strip():
+        if (
+            status
+            not in {
+                CorpusIngestionStatus.DISCOVERED,
+                CorpusIngestionStatus.FAILED,
+            }
+            and not self.normalized_content.strip()
+        ):
             raise CorpusDomainError("CORPUS_NORMALIZED_CONTENT_EMPTY")
         self.ingestion_status = status
 
@@ -272,5 +284,8 @@ class CorpusChunk:
             raise CorpusDomainError("CORPUS_ACTIVE_CHUNK_EMBEDDING_REQUIRED")
         if self.embedding is not None:
             validate_embedding(list(self.embedding))
-            if not self.embedding_model or self.embedding_dimensions != 1024:
+            if (
+                not self.embedding_model
+                or self.embedding_dimensions != EMBEDDING_DIMENSIONS
+            ):
                 raise CorpusDomainError("CORPUS_CHUNK_EMBEDDING_METADATA_INVALID")

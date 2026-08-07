@@ -1,12 +1,12 @@
 # Modelo de datos: Incremento 005
 
-**Status**: `IMPLEMENTATION_EXTERNAL_GATE_PENDING`
+**Status**: `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`
 
 ## Convenciones
 
 - UUID, timestamps UTC con zona, enums/check constraints explícitos.
 - Hashes SHA-256 como 64 caracteres hex lowercase.
-- `embedding vector(1024)` es el contrato confirmado para la migración 005.
+- `embedding halfvec(2560)` es el contrato confirmado para la migración 005.
 - JSONB contiene metadata secundaria sanitizada; filtros principales son columnas.
 - Filas con vector nulo solo son válidas mientras el chunk está en staging/falla.
 
@@ -105,7 +105,7 @@ se derivan exclusivamente de `corpus_chunks`. No se agrega cifrado de columna en
 | content | texto | No | No vacío, límite contractual |
 | token_count | entero ≥0 | No | Estimado/informativo |
 | content_hash | char(64) | No | SHA-256 del chunk |
-| embedding | vector(1024) | Sí | Solo ACTIVE exige valor; dimensión estricta |
+| embedding | halfvec(2560) | Sí | Solo ACTIVE exige valor; dimensión estricta |
 | embedding_model | texto | Sí | Obligatorio con vector |
 | embedding_dimensions | entero | Sí | Igual D y longitud real |
 | normalization_version | texto | No | Trazabilidad |
@@ -197,7 +197,7 @@ del commit de esta fila. Una falla/timeout devuelve
 | comments | texto opcional | Acotado, sanitizado, sin datos sensibles |
 | dataset_version | texto | Versión inmutable del dataset |
 | embedding_model | texto | Modelo evaluado |
-| embedding_dimensions | integer | 1024 para el contrato 005 |
+| embedding_dimensions | integer | 2560 para el contrato 005 |
 | evaluated_at | timestamptz | Momento efectivo del juicio humano |
 | created_at | timestamptz | UTC; inserción durable |
 
@@ -223,7 +223,7 @@ auditoría a documentos para preservar minimización.
 
 Upgrade: validar extensión y dependencia Python oficial `pgvector` → crear
 enums/tablas, incluida revisión humana → constraints/índices B-tree → mapear
-`Vector(1024)` de SQLAlchemy a `vector(1024)` → ANALYZE tras carga, no en migración.
+`HALFVEC(2560)` de SQLAlchemy a `halfvec(2560)` → ANALYZE tras carga, no en migración.
 
 Downgrade: retirar índices → tablas en orden de FK → enums exclusivos de 005.
 No quitar extensión vector ni tocar objetos 001–004. El downgrade requiere

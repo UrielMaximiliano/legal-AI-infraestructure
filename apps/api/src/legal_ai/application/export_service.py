@@ -231,9 +231,12 @@ class ExportService:
         )
         try:
             await self._uow.document_exports.create(export)
-            export = await self._uow.document_exports.update_status(
-                export.id, ExportStatus.GENERATING, updated_at=now
-            ) or export
+            export = (
+                await self._uow.document_exports.update_status(
+                    export.id, ExportStatus.GENERATING, updated_at=now
+                )
+                or export
+            )
             await self._uow.export_attempts.create(attempt)
             attempt.status = ExportAttemptStatus.PROCESSING
             attempt.started_at = now
@@ -325,13 +328,9 @@ class ExportService:
             )
             validation_started = time.perf_counter()
             if context.format == ExportFormat.PDF:
-                digest = self._integrity.validate_pdf(
-                    temporary, declared_mime=mime
-                )
+                digest = self._integrity.validate_pdf(temporary, declared_mime=mime)
             else:
-                digest = self._integrity.validate_docx(
-                    temporary, declared_mime=mime
-                )
+                digest = self._integrity.validate_docx(temporary, declared_mime=mime)
             validation_duration = round(
                 (time.perf_counter() - validation_started) * 1000, 3
             )
@@ -537,9 +536,7 @@ class ExportService:
                     ExportAttemptStatus.SUCCEEDED,
                     ExportAttemptStatus.FAILED,
                 }:
-                    return ExportOperationResult(
-                        existing_result, existing_attempt, 200
-                    )
+                    return ExportOperationResult(existing_result, existing_attempt, 200)
 
         draft = await self._uow.drafts.get_by_id_for_update(source.draft_id)
         if draft is None:

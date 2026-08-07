@@ -17,6 +17,7 @@ from legal_ai.domain.semantic_search import (
     SemanticSearchRun,
     SemanticSearchStatus,
 )
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 from legal_ai.ports.embedding import (
     EmbeddingProvider,
     InferenceCoordinationPort,
@@ -48,12 +49,12 @@ class SemanticSearchService:
         uow_factory: Callable[[], Any],
         embedding_provider: EmbeddingProvider,
         inference_coordinator: InferenceCoordinationPort | None = None,
-        model: str = "qwen3-embedding:0.6b",
-        dimensions: int = 1024,
+        model: str = EMBEDDING_MODEL,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         audit_retries: int = 1,
         reviewed_only: bool = True,
     ) -> None:
-        if model != "qwen3-embedding:0.6b" or dimensions != 1024:
+        if model != EMBEDDING_MODEL or dimensions != EMBEDDING_DIMENSIONS:
             raise ValueError("EMBEDDING_CONTRACT_INVALID")
         self._uow_factory = uow_factory
         self._provider = embedding_provider

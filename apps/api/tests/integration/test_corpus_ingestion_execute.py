@@ -63,7 +63,7 @@ async def test_execute_is_atomic_and_idempotent(tmp_path: Path) -> None:
         first = await service.run(str(tmp_path), execute=True, run_id=run_id)
         assert first.status == "completed"
         assert first.execution_mode == "EXECUTE"
-        assert first.dimensions == 1024
+        assert first.dimensions == 2560
 
         second = await service.run(str(tmp_path), execute=True, run_id=run_id)
         assert second.status == "completed"

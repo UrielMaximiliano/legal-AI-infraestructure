@@ -1,4 +1,10 @@
-"""Ollama /api/embed adapter with strict, sanitized contract validation."""
+"""Ollama embedding adapter with strict, sanitized contract validation.
+
+The native ``/api/embed`` endpoint accepts a batch.  Some externally exposed
+Ollama proxies publish only the legacy ``/api/embeddings`` endpoint, which
+accepts one prompt at a time.  The endpoint is therefore explicit
+configuration, never an implicit fallback.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+
 
 class OllamaEmbeddingError(RuntimeError):
     def __init__(self, code: str, *, status_code: int | None = None) -> None:
@@ -18,20 +26,30 @@ class OllamaEmbeddingError(RuntimeError):
         super().__init__(code)
 
 
+EMBEDDING_ENDPOINT_BATCH = "/api/embed"
+EMBEDDING_ENDPOINT_LEGACY = "/api/embeddings"
+ALLOWED_EMBEDDING_ENDPOINTS = frozenset(
+    {EMBEDDING_ENDPOINT_BATCH, EMBEDDING_ENDPOINT_LEGACY}
+)
+
+
 class OllamaEmbeddingAdapter:
     def __init__(
         self,
         *,
         base_url: str,
         api_token: str,
-        model: str = "qwen3-embedding:0.6b",
-        dimensions: int = 1024,
+        model: str = EMBEDDING_MODEL,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         timeout_seconds: float = 30.0,
         client: httpx.AsyncClient | None = None,
         max_retries: int = 2,
+        endpoint: str = EMBEDDING_ENDPOINT_BATCH,
     ) -> None:
-        if dimensions != 1024:
-            raise ValueError("EMBEDDING_DIMENSIONS debe ser 1024")
+        if dimensions != EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}"
+            )
         if not model or not api_token:
             raise ValueError("OLLAMA_EMBEDDING_CONFIGURATION_INVALID")
         self._validate_endpoint(base_url)
@@ -42,6 +60,9 @@ class OllamaEmbeddingAdapter:
         self.timeout = timeout_seconds
         self._client = client
         self.max_retries = max(0, max_retries)
+        if endpoint not in ALLOWED_EMBEDDING_ENDPOINTS:
+            raise ValueError("OLLAMA_EMBEDDING_ENDPOINT_INVALID")
+        self.endpoint = endpoint
 
     @staticmethod
     def _validate_endpoint(base_url: str) -> None:
@@ -144,12 +165,28 @@ class OllamaEmbeddingAdapter:
             or any(not isinstance(text, str) or not text for text in texts)
         ):
             raise OllamaEmbeddingError("OLLAMA_INPUT_EMPTY")
-        body = await self._request(
-            "POST",
-            "/api/embed",
-            {"model": self.model, "input": list(texts), "dimensions": self.dimensions},
-        )
-        return self._validate(body.get("embeddings"), len(texts))
+        if self.endpoint == EMBEDDING_ENDPOINT_BATCH:
+            body = await self._request(
+                "POST",
+                self.endpoint,
+                {
+                    "model": self.model,
+                    "input": list(texts),
+                    "dimensions": self.dimensions,
+                },
+            )
+            return self._validate(body.get("embeddings"), len(texts))
+
+        # The legacy endpoint has no batch input.  Keep application-level
+        # ordering deterministic and validate every response before returning
+        # any vectors to the caller.
+        vectors: list[list[float]] = []
+        for text in texts:
+            body = await self._request(
+                "POST", self.endpoint, {"model": self.model, "prompt": text}
+            )
+            vectors.extend(self._validate([body.get("embedding")], 1))
+        return vectors
 
     async def embed_query(self, text: str) -> list[float]:
         vectors = await self.embed_documents([text])

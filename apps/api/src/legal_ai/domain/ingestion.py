@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+
 
 class IngestionRunType(StrEnum):
     INGEST = "INGEST"
@@ -334,8 +336,8 @@ class EmbeddingBatch:
     input_count: int
     status: EmbeddingBatchStatus = EmbeddingBatchStatus.PENDING
     chunk_ids: tuple[uuid.UUID, ...] = ()
-    embedding_model: str = "qwen3-embedding:0.6b"
-    embedding_dimensions: int = 1024
+    embedding_model: str = EMBEDDING_MODEL
+    embedding_dimensions: int = EMBEDDING_DIMENSIONS
     attempt_count: int = 0
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -346,7 +348,7 @@ class EmbeddingBatch:
             self.generation <= 0
             or self.batch_index < 0
             or self.input_count < 0
-            or self.embedding_dimensions != 1024
+            or self.embedding_dimensions != EMBEDDING_DIMENSIONS
             or self.attempt_count < 0
         ):
             raise ValueError("EMBEDDING_BATCH_INVALID")

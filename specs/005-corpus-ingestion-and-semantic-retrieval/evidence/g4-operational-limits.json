@@ -1,8 +1,8 @@
 {
   "gate": "G4",
   "status": "CONFIGURATION_VALIDATED",
-  "model": "qwen3-embedding:0.6b",
-  "dimensions": 1024,
+  "model": "qwen3-embedding:4b-q4_K_M",
+  "dimensions": 2560,
   "embedding_batch_size": 16,
   "max_file_size_bytes": 2097152,
   "max_batch_files": 10000,

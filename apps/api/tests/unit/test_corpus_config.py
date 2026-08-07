@@ -2,11 +2,12 @@ import pytest
 from pydantic import ValidationError
 
 from legal_ai.config import CorpusConfig, EmbeddingConfig, SemanticSearchConfig
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 
 
 def test_contract_defaults() -> None:
-    assert EmbeddingConfig().model == "qwen3-embedding:0.6b"
-    assert EmbeddingConfig().dimensions == 1024
+    assert EmbeddingConfig().model == EMBEDDING_MODEL
+    assert EmbeddingConfig().dimensions == EMBEDDING_DIMENSIONS
     assert SemanticSearchConfig().reviewed_only is True
 
 

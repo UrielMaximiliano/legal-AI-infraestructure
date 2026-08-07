@@ -44,6 +44,7 @@ from legal_ai.domain.ingestion import (
     IngestionRunType,
     configuration_hash_for_snapshot,
 )
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 from legal_ai.ports.corpus_repositories import CorpusDeduplicationLookupPort
 from legal_ai.ports.embedding import (
     EmbeddingProvider,
@@ -54,8 +55,8 @@ from legal_ai.schemas.corpus_cli import CorpusDryRunReport, CorpusFailureReport
 
 @dataclass(frozen=True, slots=True)
 class CorpusIngestionConfiguration:
-    model: str = "qwen3-embedding:0.6b"
-    dimensions: int = 1024
+    model: str = EMBEDDING_MODEL
+    dimensions: int = EMBEDDING_DIMENSIONS
     source_name: str = "filesystem"
     document_type: str = "decreto"
     document_subtype: str = "designacion_transitoria"
@@ -67,7 +68,7 @@ class CorpusIngestionConfiguration:
     max_chunks: int = 100_000
 
     def validate(self) -> None:
-        if self.model != "qwen3-embedding:0.6b" or self.dimensions != 1024:
+        if self.model != EMBEDDING_MODEL or self.dimensions != EMBEDDING_DIMENSIONS:
             raise ValueError("EMBEDDING_CONTRACT_INVALID")
         if not self.source_name.strip():
             raise ValueError("CORPUS_SOURCE_NAME_INVALID")
@@ -421,9 +422,7 @@ class CorpusIngestionService:
                 except Exception as exc:  # provider and batch errors are sanitized
                     failed = True
                     error_code = _error_code(exc, "EMBEDDING_BATCH_FAILED")
-                    await self._persist_batch_failure(
-                        batch, error_code, uow_factory
-                    )
+                    await self._persist_batch_failure(batch, error_code, uow_factory)
                     failures.append(
                         CorpusFailureReport(
                             source_identifier="<embedding>",

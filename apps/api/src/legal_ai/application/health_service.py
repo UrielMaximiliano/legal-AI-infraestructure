@@ -76,8 +76,7 @@ class HealthService:
                 status=ollama.status,
                 latency_ms=ollama.latency_ms,
                 error_code=(
-                    ollama.error_code
-                    or "SEMANTIC_RETRIEVAL_PROVIDER_UNAVAILABLE"
+                    ollama.error_code or "SEMANTIC_RETRIEVAL_PROVIDER_UNAVAILABLE"
                 ),
                 message="Proveedor de embeddings no disponible",
             )

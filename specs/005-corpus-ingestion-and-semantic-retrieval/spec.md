@@ -2,7 +2,7 @@
 
 **ID de Especificación**: `005-corpus-ingestion-and-semantic-retrieval`
 **Creada**: 2026-08-04
-**Estado**: `IMPLEMENTATION_EXTERNAL_GATE_PENDING`
+**Estado**: `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`
 **Entrada**: Descripción del usuario: "Crear un pipeline robusto, trazable y reproducible para ingesta de corpus jurídico y recuperación semántica"
 
 ## Resumen ejecutivo *(obligatorio)*
@@ -23,10 +23,12 @@ reservada para `006-rag-assisted-document-generation`.
 
 ### Sesión 2026-08-04
 
-- Q: ¿Qué dimensión contractual debe usar 005? → A: Para
-  `qwen3-embedding:0.6b`, la expectativa documental es 1024; G1 debe comprobar
-  desde Docker/local que `/api/embed` devuelve exactamente 1024 valores. Todo
-  cambio posterior de modelo o dimensión requiere migración y reindexación.
+- Q: ¿Qué dimensión y endpoint contractual debe usar 005? → A: Para
+  `qwen3-embedding:4b-q4_K_M`, la dimensión es 2560 y G1 debe comprobar desde
+  Docker/local el perfil de endpoint configurado. `/api/embed` devuelve batches
+  nativos cuando está expuesto; `/api/embeddings` devuelve un embedding por
+  prompt y la aplicación conserva el batch de forma secuencial. Todo cambio de
+  modelo, dimensión o perfil requiere revalidación y reindexación cuando aplique.
 - Q: ¿Qué semántica exacta debe tener `corpus ingest PATH` sin `--execute`? → A:
   Dry-run sin persistencia ni solicitudes de embeddings; `--execute` es la única
   autorización explícita para generar y persistir documentos, chunks y vectores.
@@ -47,7 +49,7 @@ reservada para `006-rag-assisted-document-generation`.
   fail-closed: no se entregan resultados y se responde HTTP 503 con
   `SEMANTIC_SEARCH_AUDIT_UNAVAILABLE`, tras como máximo un retry transitorio acotado.
 - Q: ¿Qué bloquea G1-B y cómo se protege `raw_content`? → A: G1-A ya fijó
-  `qwen3-embedding:0.6b`/1024 y autoriza `vector(1024)`; G1-B solo bloquea la
+  `qwen3-embedding:4b-q4_K_M`/2560 y autoriza `halfvec(2560)`; G1-B solo bloquea la
   aceptación operativa externa. `raw_content` se accede exclusivamente mediante
   repositorio, `CorpusReviewService` o herramientas administrativas autorizadas,
   nunca mediante DTOs, serialización genérica, respuestas, logs o métricas.
@@ -288,7 +290,7 @@ mismas métricas y un reporte comparable.
 - **RF-020**: `EMBEDDING_DIMENSIONS` DEBE coincidir con evidencia reproducible del
   modelo y proveedor; cambiarla requiere migración y reindexación completas.
 - **RF-021**: G1-A está cerrado por evidencia local del servidor y fija
-  `qwen3-embedding:0.6b`, `EMBEDDING_DIMENSIONS=1024` y `vector(1024)` para la
+  `qwen3-embedding:4b-q4_K_M`, `EMBEDDING_DIMENSIONS=2560` y `halfvec(2560)` para la
   migración 005. G1-B valida únicamente la ruta externa Docker/local →
   HTTPS/Bearer → Funnel/Nginx → Ollama remoto; no bloquea planificación, tasks,
   implementación, migración ni tests con fake, y no reabre el contrato vectorial.
@@ -400,7 +402,7 @@ mismas métricas y un reporte comparable.
   modelo de datos, quickstart, contratos HTTP/CLI, reindexación, recuperación,
   límites, seguridad, evaluación y configuración sin secretos.
 - **RF-050**: La integración SQLAlchemy DEBE usar la dependencia Python oficial
-  `pgvector` con `Vector(1024)` y versiones reproducibles. El cierre DEBE ejecutar
+  `pgvector` con `HALFVEC(2560)` y versiones reproducibles. El cierre DEBE ejecutar
   un escaneo de dependencias separado de tests ordinarios; vulnerabilidades altas o
   críticas bloquean salvo excepción documentada y aprobada.
 - **RF-051**: El CLI administrativo DEBE soportar
@@ -618,10 +620,10 @@ documental, excerpts, tokens, `Authorization`, rutas internas ni stack traces.
 ## Dependencias
 
 - Capacidades existentes de PostgreSQL 16 y pgvector.
-- Ollama externo y disponibilidad del modelo `qwen3-embedding:0.6b`.
+- Ollama externo y disponibilidad del modelo `qwen3-embedding:4b-q4_K_M`.
 - Envelope de errores, observabilidad, auditoría y configuración de 003–004.
 - Docker Compose y mecanismo de migraciones existentes.
-- Investigación reproducible sobre endpoint, dimensión nativa 1024,
+- Investigación reproducible sobre endpoint, dimensión nativa 2560,
   almacenamiento y estrategia de índices.
 
 ## Riesgos
@@ -639,9 +641,12 @@ documental, excerpts, tokens, `Authorization`, rutas internas ni stack traces.
 
 ## Veredicto
 
-`BLOCKED_EXTERNAL`
+`READY_FOR_REANALYSIS`
 
 La especificación delimita actores, flujos, datos, seguridad, observabilidad,
 evaluación, compatibilidad y resultados medibles. La implementación mantiene
-`qwen3-embedding:0.6b`/1024 y está bloqueada únicamente por la ruta externa G1-B:
-la evidencia local recibió 404 en `/api/embed`.
+`qwen3-embedding:4b-q4_K_M`/2560. G1-B quedó validado desde el entorno local contra
+HTTPS/Bearer usando el perfil externo documentado `/api/embeddings`, con 200 en
+version, show y embeddings, 2560 dimensiones, estabilidad y compatibilidad
+documento/query. El proxy no expone `/api/embed`; ese perfil nativo permanece
+disponible solo cuando el despliegue lo publique explícitamente.

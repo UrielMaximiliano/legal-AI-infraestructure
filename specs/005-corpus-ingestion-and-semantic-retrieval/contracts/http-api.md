@@ -1,6 +1,6 @@
 # Contrato HTTP — Semantic Search 005
 
-**Status**: `IMPLEMENTATION_EXTERNAL_GATE_PENDING`
+**Status**: `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`
 
 ## POST `/api/v1/semantic-search`
 
@@ -56,8 +56,8 @@ evaluación administrativa explícita y nunca incluye `REJECTED`.
         "source_url": null,
         "organization": null,
         "metadata": {},
-        "embedding_model": "qwen3-embedding:0.6b",
-        "embedding_dimensions": 1024
+        "embedding_model": "qwen3-embedding:4b-q4_K_M",
+        "embedding_dimensions": 2560
       }
     ]
   },
@@ -65,8 +65,8 @@ evaluación administrativa explícita y nunca incluye `REJECTED`.
 }
 ```
 
-El modelo contractual es `qwen3-embedding:0.6b` y la dimensión contractual es
-1024. Cualquier respuesta con otra dimensión falla antes de buscar. Resultado
+El modelo contractual es `qwen3-embedding:4b-q4_K_M` y la dimensión contractual es
+2560. Cualquier respuesta con otra dimensión falla antes de buscar. Resultado
 vacío es `results: []` con 200.
 
 Orden: score DESC, publication_date DESC NULLS LAST, document_id ASC,

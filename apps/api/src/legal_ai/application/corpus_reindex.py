@@ -52,22 +52,36 @@ class CorpusReindexService:
                     if document is not None:
                         result.append(document)
                 return tuple(result)
-            documents = await uow.corpus_documents.list(
-                document_type=request.document_type,
-                document_subtype=request.document_subtype,
-                jurisdiction=request.jurisdiction,
-                review_status=None,
-                limit=1000,
-            )
-            return tuple(
-                document
-                for document in documents
-                if (request.language is None or document.language == request.language)
-                and (
-                    request.organization is None
-                    or document.organization == request.organization
+            # The repository deliberately caps a single page. Walk all pages
+            # so a full-corpus reindex cannot silently stop at 1,000 rows.
+            page_size = 1000
+            selected: list[CorpusDocument] = []
+            offset = 0
+            while True:
+                page = await uow.corpus_documents.list(
+                    document_type=request.document_type,
+                    document_subtype=request.document_subtype,
+                    jurisdiction=request.jurisdiction,
+                    review_status=None,
+                    limit=page_size,
+                    offset=offset,
                 )
-            )
+                selected.extend(
+                    document
+                    for document in page
+                    if (
+                        request.language is None
+                        or document.language == request.language
+                    )
+                    and (
+                        request.organization is None
+                        or document.organization == request.organization
+                    )
+                )
+                if len(page) < page_size:
+                    break
+                offset += len(page)
+            return tuple(selected)
 
     async def dry_run(self, request: CorpusReindexRequest) -> CorpusReindexReport:
         documents = await self._select(request)

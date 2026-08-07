@@ -28,7 +28,7 @@
 - [x] El cierre exige escaneo de vulnerabilidades críticas/altas o excepción aprobada
 - [x] La auditoría de búsqueda tiene una política fail-closed verificable
 - [x] El dry-run de reindexación garantiza cero efectos persistentes y cero Ollama
-- [x] G1-A fija 1024 y G1-B bloquea solo aceptación operativa externa
+- [x] G1-A fija 2560 y G1-B bloquea solo aceptación operativa externa
 - [x] CorpusReviewService separa dominio de revisión e integración CLI
 - [x] raw_content tiene acceso mínimo, mappers explícitos y pruebas contra fugas
 - [x] FakeEmbeddingProvider e InferenceCoordinator tienen suites separadas

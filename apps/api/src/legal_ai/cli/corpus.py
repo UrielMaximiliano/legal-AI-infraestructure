@@ -32,6 +32,7 @@ from legal_ai.cli.corpus_evaluate import run as run_evaluation
 from legal_ai.cli.corpus_evaluate import run_ollama as run_ollama_evaluation
 from legal_ai.cli.corpus_probe import probe as run_probe
 from legal_ai.config import CorpusConfig, settings
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 from legal_ai.schemas.corpus_reindex import CorpusReindexRequest
 from legal_ai.schemas.corpus_review import CorpusReviewRequest
 
@@ -47,8 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--language", default="es")
     ingest.add_argument("--source-name", default="filesystem")
     ingest.add_argument("--batch-size", type=int)
-    ingest.add_argument("--embedding-model", default="qwen3-embedding:0.6b")
-    ingest.add_argument("--embedding-dimensions", type=int, default=1024)
+    ingest.add_argument("--embedding-model", default=EMBEDDING_MODEL)
+    ingest.add_argument(
+        "--embedding-dimensions", type=int, default=EMBEDDING_DIMENSIONS
+    )
     ingest.add_argument("--execute", action="store_true")
     ingest.add_argument("--resume", action="store_true")
     ingest.add_argument("--run-id")
@@ -83,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     probe = commands.add_parser("probe-embedding")
     probe.add_argument("--base-url")
     probe.add_argument("--token")
+    probe.add_argument("--endpoint", choices=("/api/embed", "/api/embeddings"))
     probe.add_argument("--timeout", type=float, default=10.0)
     probe.add_argument("--output", choices=("json",), default="json")
     return parser
@@ -128,6 +132,7 @@ async def _run_ingest(args: argparse.Namespace) -> int:
                     model=configuration.model,
                     dimensions=configuration.dimensions,
                     timeout_seconds=limits.embedding_timeout_seconds,
+                    endpoint=ollama.endpoint,
                 )
                 coordinator = InferenceCoordinator(
                     max_queue_size=limits.max_queue_size,
@@ -245,7 +250,8 @@ async def _run_evaluate(args: argparse.Namespace) -> int:
 async def _run_probe(args: argparse.Namespace) -> int:
     base_url = args.base_url or settings.ollama.base_url
     token = args.token or settings.ollama.api_token
-    payload = await run_probe(base_url, token, args.timeout)
+    endpoint = args.endpoint or settings.ollama.endpoint
+    payload = await run_probe(base_url, token, args.timeout, endpoint)
     print(
         json.dumps(
             payload,

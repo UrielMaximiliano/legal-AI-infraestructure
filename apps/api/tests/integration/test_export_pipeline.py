@@ -23,9 +23,7 @@ async def client():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_create_docx_and_pdf_then_download(
-    client, monkeypatch, tmp_path
-) -> None:
+async def test_create_docx_and_pdf_then_download(client, monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(settings.export, "storage_root", tmp_path)
     draft_id = await _seed_finalized_draft(client)
 
@@ -40,9 +38,7 @@ async def test_create_docx_and_pdf_then_download(
                 "exported_by": "Editor",
             },
             headers={
-                "Idempotency-Key": (
-                    f"export-{raw_format.lower()}-{uuid.uuid4().hex}"
-                )
+                "Idempotency-Key": (f"export-{raw_format.lower()}-{uuid.uuid4().hex}")
             },
         )
         assert created.status_code == 202

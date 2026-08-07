@@ -119,9 +119,7 @@ async def test_finalize_is_write_once_and_blocks_legacy_mutations(client) -> Non
 @pytest.mark.contract
 async def test_preview_before_finalization_is_html_and_has_no_cache(client) -> None:
     draft_id = await _seed_approved_draft()
-    first = await client.get(
-        f"/api/v1/drafts/{draft_id}/preview?draft_version=1"
-    )
+    first = await client.get(f"/api/v1/drafts/{draft_id}/preview?draft_version=1")
     assert first.status_code == 200
     assert first.headers["content-type"] == "text/html; charset=utf-8"
     assert first.headers["cache-control"] == "no-store"
@@ -143,9 +141,7 @@ async def test_preview_uses_only_final_snapshot_after_finalization(client) -> No
         },
     )
     assert finalized.status_code == 200
-    response = await client.get(
-        f"/api/v1/drafts/{draft_id}/preview?draft_version=3"
-    )
+    response = await client.get(f"/api/v1/drafts/{draft_id}/preview?draft_version=3")
     assert response.status_code == 200
     assert "Approved content" in response.text
     assert "final_snapshot" not in response.text
@@ -154,9 +150,7 @@ async def test_preview_uses_only_final_snapshot_after_finalization(client) -> No
 @pytest.mark.contract
 async def test_preview_requires_current_version_and_approved_draft(client) -> None:
     draft_id = await _seed_approved_draft()
-    stale = await client.get(
-        f"/api/v1/drafts/{draft_id}/preview?draft_version=2"
-    )
+    stale = await client.get(f"/api/v1/drafts/{draft_id}/preview?draft_version=2")
     assert stale.status_code == 409
     assert stale.json()["error_code"] == "CONCURRENT_MODIFICATION"
     missing = await client.get(f"/api/v1/drafts/{draft_id}/preview")
@@ -194,9 +188,7 @@ async def test_preview_has_no_database_or_filesystem_side_effects(
     client, tmp_path
 ) -> None:
     draft_id = await _seed_approved_draft()
-    before = await client.get(
-        f"/api/v1/drafts/{draft_id}/preview?draft_version=1"
-    )
+    before = await client.get(f"/api/v1/drafts/{draft_id}/preview?draft_version=1")
     assert before.status_code == 200
     async with UnitOfWork() as uow:
         draft = await uow.drafts.get_by_id(draft_id)

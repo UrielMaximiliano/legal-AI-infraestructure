@@ -6,6 +6,8 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+
 
 class SemanticSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -61,8 +63,8 @@ class SemanticSearchResult(BaseModel):
     publication_date: str | None = None
     source_url: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
-    embedding_model: str = "qwen3-embedding:0.6b"
-    embedding_dimensions: int = 1024
+    embedding_model: str = EMBEDDING_MODEL
+    embedding_dimensions: int = EMBEDDING_DIMENSIONS
 
 
 class SemanticSearchResponse(BaseModel):

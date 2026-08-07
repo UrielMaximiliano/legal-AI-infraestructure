@@ -1,7 +1,7 @@
 # Plan de arquitectura: Ingesta de corpus y recuperación semántica
 
 **Rama**: `005-corpus-ingestion-and-semantic-retrieval` | **Fecha**: 2026-08-04 | **Spec**: [spec.md](spec.md)
-**Estado**: `IMPLEMENTATION_EXTERNAL_GATE_PENDING`
+**Estado**: `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`
 **Alcance del documento**: diseño y secuenciación; no implementa código.
 
 ## Resumen
@@ -14,8 +14,8 @@ pgvector y recuperar antecedentes mediante similitud coseno y filtros estrictos.
 El diseño reutiliza los patrones existentes de configuración tipada,
 `UnitOfWork`, repositorios SQLAlchemy, handlers uniformes, observabilidad y
 health/readiness. La inferencia ocurre siempre fuera de transacciones. La
-búsqueda exacta es el baseline. La migración 005 usa `vector(1024)`, dimensión
-confirmada empíricamente para `qwen3-embedding:0.6b`; la conectividad externa se
+búsqueda exacta es el baseline. La migración 005 usa `halfvec(2560)`, dimensión
+confirmada empíricamente para `qwen3-embedding:4b-q4_K_M`; la conectividad externa se
 valida por separado en G1-B.
 
 ## Contexto técnico
@@ -25,9 +25,9 @@ valida por separado en G1-B.
 | Lenguaje/runtime | Python 3.12, async donde ya lo usa la aplicación |
 | API y schemas | FastAPI + Pydantic, preservando el envelope 003–004 |
 | Persistencia | PostgreSQL 16, SQLAlchemy async, Alembic y pgvector |
-| Proveedor | Ollama externo mediante `POST /api/embed`, HTTPS/Bearer |
-| Modelo | Tag exacto `qwen3-embedding:0.6b` (~639 MB, 596M, Q8_0) |
-| Dimensión | Contractual: 1024, confirmada empíricamente en el servidor Ollama |
+| Proveedor | Ollama externo mediante perfil configurado: `POST /api/embed` (batch nativo) o `POST /api/embeddings` (secuencial), siempre HTTPS/Bearer |
+| Modelo | Tag exacto `qwen3-embedding:4b-q4_K_M` (~639 MB, 596M, Q8_0) |
+| Dimensión | Contractual: 2560, confirmada empíricamente en el servidor Ollama |
 | Contexto/capacidad | 32K, multilingüe e instruction-aware |
 | Distancia | Coseno con `<=>`; `similarity_score = clamp(1 - cosine_distance, 0, 1)` |
 | Índice inicial | Exact search + B-tree para filtros; sin ANN en MVP inicial |
@@ -237,7 +237,7 @@ sanitizadas. Fairness acotada impide monopolio y deadlock.
 
 ## Persistencia e índices
 
-La integración ORM usa la dependencia Python oficial `pgvector` y `Vector(1024)`,
+La integración ORM usa la dependencia Python oficial `pgvector` y `HALFVEC(2560)`,
 con versión reproducible en `pyproject.toml` y lockfile; no se implementa SQL
 vectorial manual. Debe ser compatible con la extensión PostgreSQL existente.
 
@@ -263,7 +263,7 @@ DTOs, schemas, logs, excepciones y métricas. No se introduce cifrado de columna
 con evaluador seudónimo y dataset versionado.
 
 - Migración 005 valida `vector` pero no elimina la extensión en downgrade.
-- La migración 005 usará `vector(1024)` y validará estrictamente esa dimensión.
+- La migración 005 usará `halfvec(2560)` y validará estrictamente esa dimensión.
 - B-tree: `(document_type, document_subtype, jurisdiction)`, hash normalizado,
   run/status y generación activa. La identidad usa dos unique parciales:
   `(source_name, external_id) WHERE ingestion_status <> 'FAILED'` y
@@ -275,15 +275,16 @@ con evaluador seudónimo y dataset versionado.
 - Ejecutar `ANALYZE` tras carga representativa y conservar `EXPLAIN (ANALYZE,
   BUFFERS)` sanitizado como evidencia.
 - HNSW solo tras Gate G2: volumen/latencia lo justifican y recall contra exact es
-  aceptable. La dimensión esperada 1024 es compatible con el límite de 2000
+  aceptable. La dimensión esperada 2560 es compatible con el límite de 2000
   dimensiones de HNSW sobre `vector`, por lo que G1 ya no lo bloquea por tamaño.
 - No introducir `halfvec`, subvector ni otra reducción dimensional sin evaluación
   de calidad y decisión explícita. IVFFlat queda fuera del MVP.
 
 ## Configuración
 
-Agregar sin secretos: `OLLAMA_EMBEDDING_MODEL=qwen3-embedding:0.6b`,
-`OLLAMA_EMBEDDING_TIMEOUT_SECONDS`, `EMBEDDING_DIMENSIONS=1024`,
+Agregar sin secretos: `OLLAMA_EMBEDDING_MODEL=qwen3-embedding:4b-q4_K_M`,
+`OLLAMA_EMBEDDING_ENDPOINT=/api/embed|/api/embeddings`,
+`OLLAMA_EMBEDDING_TIMEOUT_SECONDS`, `EMBEDDING_DIMENSIONS=2560`,
 `OLLAMA_EMBEDDING_BATCH_SIZE`, `CORPUS_MAX_FILE_SIZE_BYTES`,
 `CORPUS_MAX_BATCH_FILES`, `CORPUS_ALLOWED_EXTENSIONS`,
 `SEMANTIC_SEARCH_MAX_TOP_K`, `SEMANTIC_SEARCH_TIMEOUT_SECONDS` y versiones de
@@ -312,7 +313,7 @@ el adaptador generativo.
 
 ## Fases de implementación posteriores
 
-1. **Infraestructura base**: configuración contractual 0.6B/1024, migración 005
+1. **Infraestructura base**: configuración contractual 4B/2560, migración 006
    y validación separada del subgate externo G1-B.
 2. **Dominio y persistencia**: entidades, enums, modelos, repositorios y UoW.
 3. **Pipeline puro**: readers, normalización, metadata y chunking con unit tests.
@@ -327,8 +328,8 @@ el adaptador generativo.
 
 | Gate | Condición | Bloquea |
 |---|---|---|
-| G1-A Modelo/dimensión | CERRADO: Ollama devolvió dos vectores válidos de 1024 con `qwen3-embedding:0.6b` | Nada; habilita `vector(1024)` y tareas |
-| G1-B Conectividad E2E | ABIERTO: falta validar Docker/local → HTTPS/Bearer → Funnel/Nginx → Ollama remoto | Aceptación operativa externa; no cambia modelo/dimensión |
+| G1-A Modelo/dimensión | CERRADO: Ollama devolvió dos vectores válidos de 2560 con `qwen3-embedding:4b-q4_K_M` | Nada; habilita `halfvec(2560)` y tareas |
+| G1-B Conectividad E2E | CERRADO para el perfil `/api/embeddings`: Docker/local → HTTPS/Bearer → Funnel/Nginx → Ollama remoto respondió 200 | Cambio de endpoint o proxy requiere revalidación; no cambia modelo/dimensión |
 | G2 ANN | Volumen + EXPLAIN + benchmark demuestran necesidad y compatibilidad | Creación de HNSW |
 | G3 Calidad | Baseline informativo Recall/Precision@3/5, MRR, utilidad y relevancia | Sin umbral previo; no bloquea CI inicialmente |
 | G4 Operación | Límites y timeout aprobados en entorno objetivo | Ejecución masiva con `--execute` |
@@ -406,11 +407,11 @@ contratos 001–004 y no conecta recuperación con generación.
 
 ## Riesgos y supuestos
 
-- La dimensión 1024 ya es contractual por evidencia empírica local del servidor;
-  G1-A está cerrado y la ruta externa G1-B sigue pendiente desde Docker/local.
-  G1-B no bloquea implementación ni migración `vector(1024)`; solo bloquea
-  aceptación operativa remota, cierre externo completo y smoke real.
-- 1024 reduce almacenamiento y es indexable por HNSW `vector`; exact search sigue
+- La dimensión 2560 ya es contractual por evidencia empírica local del servidor;
+  G1-A está cerrado y la ruta externa G1-B está validada desde Docker/local para
+  `/api/embeddings`. G1-B no bloquea implementación ni migración `halfvec(2560)`;
+  cambiar de perfil requiere repetir el probe.
+- 2560 reduce almacenamiento y es indexable por HNSW `vector`; exact search sigue
   siendo el baseline apropiado para el corpus inicial.
 - El servidor con un modelo cargado puede desalojar al generador; ingestas deben
   coordinarse operativamente y `keep_alive` no debe monopolizar GPU.
@@ -421,9 +422,11 @@ contratos 001–004 y no conecta recuperación con generación.
 
 ## Veredicto
 
-`BLOCKED_EXTERNAL`
+`READY_FOR_REANALYSIS`
 
-El planning fija `qwen3-embedding:0.6b`, `EMBEDDING_DIMENSIONS=1024` y
-`vector(1024)`. G1-A está cerrado. G1-B permanece `BLOCKED_EXTERNAL`: la única
-ejecución autorizada desde Docker/local recibió 404 en `/api/embed`. Esto no
-reabre la dimensión; solo impide la aceptación operativa externa.
+El planning fija `qwen3-embedding:4b-q4_K_M`, `EMBEDDING_DIMENSIONS=2560` y
+`halfvec(2560)`. G1-A está cerrado. G1-B está cerrado para el perfil externo
+`/api/embeddings`: la ejecución desde Docker/local atravesó HTTPS/Bearer y
+obtuvo 200 en version, show y embeddings, con 2560 dimensiones, estabilidad y
+compatibilidad documento/query. El perfil `/api/embed` no se expone en ese proxy
+y no se usa como fallback implícito; cambiar de perfil requiere revalidación.

@@ -23,6 +23,7 @@ def _service() -> SemanticSearchService:
         model=settings.embedding.model,
         dimensions=settings.embedding.dimensions,
         timeout_seconds=settings.ollama.timeout_seconds,
+        endpoint=settings.ollama.endpoint,
     )
     return SemanticSearchService(
         uow_factory=UnitOfWork,

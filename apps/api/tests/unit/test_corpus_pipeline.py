@@ -117,6 +117,7 @@ def test_cli_dry_run_has_no_sensitive_paths_or_content(
     (tmp_path / "decreto.txt").write_text(
         "ARTÍCULO 1°.- Designación transitoria.", encoding="utf-8"
     )
+
     class EmptyLookup:
         async def lookup(self, **kwargs):
             return ()
@@ -130,7 +131,7 @@ def test_cli_dry_run_has_no_sensitive_paths_or_content(
     assert "DRY_RUN" in output
     assert str(tmp_path) not in output
     assert "Designación transitoria" not in output
-    assert "qwen3-embedding:0.6b" in output
+    assert "qwen3-embedding:4b-q4_K_M" in output
 
 
 def test_cli_rejects_resume_without_execute(tmp_path: Path, capsys) -> None:

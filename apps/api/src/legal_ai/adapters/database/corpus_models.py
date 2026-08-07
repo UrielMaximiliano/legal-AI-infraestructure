@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime
 from enum import Enum as PyEnum
 
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import HALFVEC
 from sqlalchemy import (
     CheckConstraint,
     Date,
@@ -26,6 +26,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from legal_ai.domain.corpus import CorpusIngestionStatus
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
 
 from .models import Base
 
@@ -219,12 +220,13 @@ class CorpusChunkModel(Base):
             "content_hash ~ '^[0-9a-f]{64}$'", name="ck_corpus_chunks_content_hash"
         ),
         CheckConstraint(
-            "embedding_dimensions IS NULL OR embedding_dimensions = 1024",
+            "embedding_dimensions IS NULL OR embedding_dimensions = "
+            f"{EMBEDDING_DIMENSIONS}",
             name="ck_corpus_chunks_embedding_dimensions",
         ),
         CheckConstraint(
             "embedding IS NULL OR (embedding_model IS NOT NULL AND "
-            "embedding_dimensions = 1024)",
+            f"embedding_dimensions = {EMBEDDING_DIMENSIONS})",
             name="ck_corpus_chunks_embedding_model",
         ),
         CheckConstraint(
@@ -277,7 +279,9 @@ class CorpusChunkModel(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
+    embedding: Mapped[list[float] | None] = mapped_column(
+        HALFVEC(EMBEDDING_DIMENSIONS)
+    )
     embedding_model: Mapped[str | None] = mapped_column(String(200))
     embedding_dimensions: Mapped[int | None] = mapped_column(Integer)
     normalization_version: Mapped[str] = mapped_column(String(100), nullable=False)

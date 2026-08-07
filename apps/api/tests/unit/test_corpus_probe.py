@@ -33,7 +33,9 @@ class _Client:
     async def post(self, path: str, *, json: dict[str, Any]) -> _Response:
         self.requests.append(("POST", path))
         if path == "/api/show":
-            return _Response(200, {"model_info": {"qwen3.embedding_length": 1024}})
+            return _Response(200, {"model_info": {"qwen3.embedding_length": 2560}})
+        if path == corpus_probe.LEGACY_ENDPOINT:
+            return _Response(200, {"embedding": [0.0] * corpus_probe.DIMENSIONS})
         return _Response(
             200,
             {"embeddings": [[0.0] * corpus_probe.DIMENSIONS for _ in json["input"]]},
@@ -45,11 +47,25 @@ async def test_probe_success_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(corpus_probe.httpx, "AsyncClient", _Client)
     result = await corpus_probe.probe("https://ollama.example", "secret-token")
     assert result["status"] == "passed"
-    assert result["dimensions"] == 1024
+    assert result["dimensions"] == 2560
     assert result["vector_count"] == 2
     assert result["query_vector_count"] == 1
     assert result["vectors_emitted"] is False
     assert "token" not in result
+
+
+@pytest.mark.asyncio
+async def test_probe_legacy_endpoint_is_sequential_and_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(corpus_probe.httpx, "AsyncClient", _Client)
+    result = await corpus_probe.probe(
+        "https://ollama.example", "secret-token", endpoint=corpus_probe.LEGACY_ENDPOINT
+    )
+    assert result["status"] == "passed"
+    assert result["endpoint"] == corpus_probe.LEGACY_ENDPOINT
+    assert result["transport_batch_supported"] is False
+    assert result["application_batch_mode"] == "sequential"
 
 
 @pytest.mark.asyncio

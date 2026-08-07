@@ -55,6 +55,7 @@ async def run_ollama(
         model=settings.embedding.model,
         dimensions=settings.embedding.dimensions,
         timeout_seconds=ollama.timeout_seconds,
+        endpoint=ollama.endpoint,
     )
     service = SemanticSearchService(
         uow_factory=UnitOfWork,
@@ -115,9 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     payload = run(args.dataset)
     print(
-        json.dumps(
-            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        )
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     )
     return 0
 

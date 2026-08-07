@@ -1,8 +1,8 @@
 # Tasks: Ingesta de corpus y recuperación semántica
 
 **Input**: artefactos de `specs/005-corpus-ingestion-and-semantic-retrieval/`
-**Estado de entrada**: `IMPLEMENTATION_EXTERNAL_GATE_PENDING`
-**Contrato**: `qwen3-embedding:0.6b`, `vector(1024)`, exact search baseline
+**Estado de entrada**: `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`
+**Contrato**: `qwen3-embedding:4b-q4_K_M`, `halfvec(2560)`, exact search baseline
 **Organización**: 18 fases; US1 ingesta, US2 búsqueda, US3 reindexación, US4 evaluación.
 
 ## Formato
@@ -18,7 +18,7 @@
 **Propósito**: fijar configuración contractual y límites compartidos.
 
 - [X] T001 Agregar dependencia oficial `pgvector` y herramienta de auditoría adoptada con versiones reproducibles en `apps/api/pyproject.toml` y `apps/api/uv.lock`
-- [X] T002 Agregar variables seguras en `.env.example` y settings tipados con `OLLAMA_EMBEDDING_MODEL=qwen3-embedding:0.6b`, `EMBEDDING_DIMENSIONS=1024` y búsqueda solo REVIEWED por defecto en `apps/api/src/legal_ai/config.py`
+- [X] T002 Agregar variables seguras en `.env.example` y settings tipados con `OLLAMA_EMBEDDING_MODEL=qwen3-embedding:4b-q4_K_M`, `EMBEDDING_DIMENSIONS=2560` y búsqueda solo REVIEWED por defecto en `apps/api/src/legal_ai/config.py`
 - [X] T003 Definir batch size, timeout, máximo de bytes de input y límites de corpus en `apps/api/src/legal_ai/config.py`
 - [X] T004 Definir extensiones permitidas, máximo `top_k` y timeout de búsqueda en `apps/api/src/legal_ai/config.py`
 - [X] T005 Validar compatibilidad de los nuevos settings con `OllamaConfig` existente en `apps/api/src/legal_ai/config.py`
@@ -32,18 +32,18 @@
 
 **Propósito**: crear persistencia 005 reversible, sin HNSW inicial.
 
-- [X] T009 Crear enums/tablas con raw protegido, revisión, `review_version INTEGER NOT NULL DEFAULT 1` y `vector(1024)` en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
+- [X] T009 Crear enums/tablas con raw protegido, revisión, `review_version INTEGER NOT NULL DEFAULT 1` y `halfvec(2560)` en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
 - [X] T010 Agregar `ingestion_runs`, `ingestion_failures` y `embedding_batches` en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
 - [X] T011 Agregar `semantic_search_runs` minimizada y `human_retrieval_evaluations` en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
 - [X] T012 Agregar FK y checks de `review_version > 0`, estados, dimensión/finitud y timestamps en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
 - [X] T013 Agregar uniques parciales de identidad, hashes, generación y `run_id` en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
 - [X] T014 Agregar índices B-tree para filtros, estados, auditoría e identidad sin crear HNSW en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
 - [X] T015 Implementar downgrade que retire solo objetos 005 y preserve pgvector/001–004 en `apps/api/alembic/versions/005_corpus_ingestion_semantic_retrieval.py`
-- [X] T016 [P] Crear modelos SQLAlchemy con `review_version` y `Vector(1024)` para documentos/revisión, chunks y generaciones en `apps/api/src/legal_ai/adapters/database/corpus_models.py`
+- [X] T016 [P] Crear modelos SQLAlchemy con `review_version` y `HALFVEC(2560)` para documentos/revisión, chunks y generaciones en `apps/api/src/legal_ai/adapters/database/corpus_models.py`
 - [X] T017 [P] Crear modelos SQLAlchemy para runs, failures y batches en `apps/api/src/legal_ai/adapters/database/ingestion_models.py`
 - [X] T018 [P] Crear modelos SQLAlchemy minimizados de búsquedas y evaluaciones humanas en `apps/api/src/legal_ai/adapters/database/semantic_search_models.py`
 - [X] T019 Crear tests de upgrade/downgrade y preservación de pgvector en `apps/api/tests/integration/test_005_migrations.py`
-- [X] T020 Probar default/check de `review_version`, revisión/procedencia, constraints, uniques y mapping `Vector(1024)` en `apps/api/tests/integration/test_005_migrations.py`
+- [X] T020 Probar default/check de `review_version`, revisión/procedencia, constraints, uniques y mapping `HALFVEC(2560)` en `apps/api/tests/integration/test_005_migrations.py`
 - [X] T021 Agregar test round-trip 004→005→004 que compare objetos 001–004 en `apps/api/tests/integration/test_005_migrations.py`
 
 **Checkpoint**: migración reversible y modelos persistentes disponibles.
@@ -55,7 +55,7 @@
 - [X] T022 [P] Crear entidades, procedencia, revisión y errores de documento/chunk en `apps/api/src/legal_ai/domain/corpus.py`
 - [X] T023 [P] Crear entidades y estados de runs, failures y batches en `apps/api/src/legal_ai/domain/ingestion.py`
 - [X] T024 [P] Crear `SemanticSearchRun`, `HumanRetrievalEvaluation` y value objects de búsqueda/evaluación en `apps/api/src/legal_ai/domain/semantic_search.py`
-- [X] T025 Implementar invariantes de modelo, dimensión 1024, finitud, hashes y transiciones en `apps/api/src/legal_ai/domain/corpus.py`
+- [X] T025 Implementar invariantes de modelo, dimensión 2560, finitud, hashes y transiciones en `apps/api/src/legal_ai/domain/corpus.py`
 - [X] T026 [P] Definir `EmbeddingProvider`, `InferenceCoordinationPort`, prioridades y DTOs en `apps/api/src/legal_ai/ports/embedding.py`
 - [X] T027 [P] Definir `CorpusSourceReader` y source identifiers sanitizados en `apps/api/src/legal_ai/ports/corpus_source.py`
 - [X] T028 [P] Definir puertos de repositorios de corpus e ingesta en `apps/api/src/legal_ai/ports/corpus_repositories.py`
@@ -73,15 +73,15 @@
 
 - [X] T034 [P] Implementar `FakeEmbeddingProvider` determinista y fallos configurables en `apps/api/src/legal_ai/adapters/embeddings/fake_embedding.py`
 - [X] T035 Implementar `InferenceCoordinator` conforme a `InferenceCoordinationPort`, con un slot, cola acotada, prioridades, fairness, timeout y cancelación en `apps/api/src/legal_ai/application/inference_coordinator.py`
-- [X] T036 Implementar cliente `POST /api/embed`, Bearer, batch, `embed_documents`, `embed_query` y health en `apps/api/src/legal_ai/adapters/ollama_embedding.py`
+- [X] T036 Implementar cliente de embeddings configurable (`/api/embed` batch nativo o `/api/embeddings` secuencial), Bearer, `embed_documents`, `embed_query` y health en `apps/api/src/legal_ai/adapters/ollama_embedding.py`
 - [X] T037 Implementar clasificación de 4xx/429/5xx, retry transitorio y backoff acotado en `apps/api/src/legal_ai/adapters/ollama_embedding.py`
-- [X] T038 Implementar validación de cantidad, dimensión 1024, finitud y vector no vacío en `apps/api/src/legal_ai/adapters/ollama_embedding.py`
+- [X] T038 Implementar validación de cantidad, dimensión 2560, finitud y vector no vacío en `apps/api/src/legal_ai/adapters/ollama_embedding.py`
 - [X] T039 Implementar errores sanitizados sin token, contenido, URL completa o vectores en `apps/api/src/legal_ai/adapters/ollama_embedding.py`
-- [X] T040 [P] Probar `FakeEmbeddingProvider`: determinismo, embed_documents/query, batch, 1024, cantidad, fallos, timeout, dimensión/NaN/infinito/vector vacío configurables en `apps/api/tests/unit/adapters/test_fake_embedding.py`
+- [X] T040 [P] Probar `FakeEmbeddingProvider`: determinismo, embed_documents/query, batch, 2560, cantidad, fallos, timeout, dimensión/NaN/infinito/vector vacío configurables en `apps/api/tests/unit/adapters/test_fake_embedding.py`
 - [X] T041 [P] Probar slot único, prioridades SEARCH/INTERACTIVE, siguiente batch, timeout, cancelación, liberación, fairness y no deadlock en `apps/api/tests/unit/application/test_inference_coordinator.py`
 - [X] T042 Crear tests contractuales de request/response, Bearer y dimensión en `apps/api/tests/contract/test_ollama_embedding_contract.py`
-- [X] T043 Agregar modelo inexistente, input string/list vacíos, dimensions 0/negativa/>1024, 401/403/429/5xx/timeout, retry solo transitorio y no retry 4xx contractual en `apps/api/tests/contract/test_ollama_embedding_contract.py`
-- [X] T044 Agregar cantidad incorrecta, dimensión distinta de 1024, vector vacío, NaN e infinito en `apps/api/tests/contract/test_ollama_embedding_contract.py`
+- [X] T043 Agregar modelo inexistente, input string/list vacíos, dimensions 0/negativa/>2560, 401/403/429/5xx/timeout, retry solo transitorio y no retry 4xx contractual en `apps/api/tests/contract/test_ollama_embedding_contract.py`
+- [X] T044 Agregar cantidad incorrecta, dimensión distinta de 2560, vector vacío, NaN e infinito en `apps/api/tests/contract/test_ollama_embedding_contract.py`
 
 **Checkpoint**: tests ordinarios no dependen de Ollama real.
 
@@ -145,7 +145,7 @@
 - [X] T074 [P] Implementar repositorio de chunks/generaciones en `apps/api/src/legal_ai/adapters/database/corpus_chunk_repository.py`
 - [X] T075 [P] Implementar repositorios de runs/failures/batches en `apps/api/src/legal_ai/adapters/database/ingestion_repository.py`
 - [X] T076 [P] Implementar repositorios de auditoría de búsquedas y evaluaciones humanas en `apps/api/src/legal_ai/adapters/database/semantic_search_run_repository.py`
-- [X] T077 Implementar exact vector search con `Vector(1024)`, filtro REVIEWED por defecto, score y desempate en `apps/api/src/legal_ai/adapters/database/pgvector_search.py`
+- [X] T077 Implementar exact vector search con `HALFVEC(2560)`, filtro REVIEWED por defecto, score y desempate en `apps/api/src/legal_ai/adapters/database/pgvector_search.py`
 - [X] T078 Extender UnitOfWork concreto con repositorios 005 en `apps/api/src/legal_ai/adapters/database/unit_of_work.py`
 - [X] T079 [P] Probar carga raw exclusiva, mappers y CAS que distingue inexistencia, mismatch y transición inválida en `apps/api/tests/integration/test_corpus_document_repository.py`
 - [X] T080 [P] Crear tests de chunks, generaciones, batches y atomicidad en `apps/api/tests/integration/test_corpus_chunk_repository.py`
@@ -264,9 +264,9 @@
 **Propósito**: capturar decisiones dependientes de entornos reales.
 
 - [X] T150 Implementar comando de probe G1-B sanitizado en `apps/api/src/legal_ai/cli/corpus_probe.py`
-- [ ] T151 Ejecutar G1-B desde Docker/local con HTTPS/Bearer y `/api/version`/`show`/`embed` según `specs/005-corpus-ingestion-and-semantic-retrieval/quickstart.md`
-- [ ] T152 Validar en G1-B batch, 1024, estabilidad, keep-alive, errores y documento/query en `specs/005-corpus-ingestion-and-semantic-retrieval/evidence/g1-e2e-result.json`
-- [ ] T153 Documentar resultado de G1-B sin secretos/vectores en `specs/005-corpus-ingestion-and-semantic-retrieval/research.md`
+- [X] T151 Ejecutar G1-B desde Docker/local con HTTPS/Bearer y el endpoint configurado (`/api/embeddings`) según `specs/005-corpus-ingestion-and-semantic-retrieval/quickstart.md`
+- [X] T152 Validar en G1-B endpoint 200, 2560, estabilidad, modo secuencial y documento/query en `specs/005-corpus-ingestion-and-semantic-retrieval/evidence/g1-e2e-result.json`
+- [X] T153 Documentar resultado de G1-B sin secretos/vectores en `specs/005-corpus-ingestion-and-semantic-retrieval/research.md`
 - [X] T154 Generar volumen representativo y capturar baseline `EXPLAIN (ANALYZE, BUFFERS)` para G2 en `specs/005-corpus-ingestion-and-semantic-retrieval/evidence/g2-exact-explain.txt`
 - [X] T155 Comparar exact vs HNSW en recall/latencia sin habilitarlo por defecto en `specs/005-corpus-ingestion-and-semantic-retrieval/evidence/g2-index-evaluation.json`
 - [X] T156 Registrar decisión G2 de índice en `specs/005-corpus-ingestion-and-semantic-retrieval/research.md`
@@ -283,7 +283,7 @@
 - [X] T162 [P] Documentar reindexación, cleanup y recuperación en `docs/runbooks/corpus-reindex.md`
 - [X] T163 [P] Documentar conectividad externa y troubleshooting G1-B en `docs/runbooks/ollama-embeddings.md`
 - [X] T164 [P] Documentar límites, seguridad y evaluación en `docs/corpus-semantic-retrieval.md`
-- [ ] T165 Ejecutar `ruff check` y `ruff format --check` sobre `apps/api/src` y `apps/api/tests`
+- [X] T165 Ejecutar `ruff check` y `ruff format --check` sobre `apps/api/src` y `apps/api/tests`
 - [X] T166 Ejecutar `mypy src/legal_ai` desde `apps/api/`
 - [X] T167 Ejecutar pytest completo y verificar cobertura ≥85% desde `apps/api/`
 - [X] T168 Ejecutar upgrade 004→005 y downgrade 005→004 con tests de migración en `apps/api/tests/integration/test_005_migrations.py`
@@ -291,7 +291,7 @@
 - [X] T170 Ejecutar smoke dry-run y confirmar cero efectos según `specs/005-corpus-ingestion-and-semantic-retrieval/quickstart.md`
 - [X] T171 Ejecutar smoke `--execute` con fake y validar resume/idempotencia según `specs/005-corpus-ingestion-and-semantic-retrieval/quickstart.md`
 - [X] T172 Ejecutar smoke semantic search con fake y auditoría minimizada según `specs/005-corpus-ingestion-and-semantic-retrieval/quickstart.md`
-- [ ] T173 Verificar documentalmente evidencia G1-B, aceptar/rechazar resultado y actualizar gate sin repetir el probe en `specs/005-corpus-ingestion-and-semantic-retrieval/research.md`
+- [X] T173 Verificar documentalmente evidencia G1-B, aceptar resultado del perfil `/api/embeddings` y actualizar gate sin repetir el probe en `specs/005-corpus-ingestion-and-semantic-retrieval/research.md`
 - [X] T174 Ejecutar suite de regresión 001–004 con embeddings disponibles y caídos desde `apps/api/`
 - [X] T175 Ejecutar `git diff --check`, auditoría reproducible de dependencias y verificar ausencia de vulnerabilidades críticas/altas, secretos o cambios fuera de 005 según `specs/005-corpus-ingestion-and-semantic-retrieval/quickstart.md`
 
@@ -310,7 +310,7 @@
 9. Phase 12 depende de Phase 11; Phase 13 depende de Phases 4 y 9.
 10. Phase 14 depende de Phase 4; Phase 15 atraviesa Phases 11–14.
 11. Phase 16 depende de US2 y del fake; Phase 17 depende de implementaciones relevantes y entorno.
-12. Phase 18 sigue a todas las fases implementables; T173 puede quedar pendiente de conectividad externa.
+12. Phase 18 sigue a todas las fases implementables; T173 documenta el perfil externo validado.
 
 ### Dependencias entre historias
 
@@ -394,8 +394,8 @@ T143 corpus fixture | T144 query dataset | T148 metric unit tests
 
 ## Risks and Controls
 
-- **G1-B externo pendiente**: tests ordinarios usan fake; T151 ejecuta una sola vez,
-  T152–T153 documentan y T173 verifica/acepta la evidencia sin repetir el probe.
+- **G1-B externo validado**: tests ordinarios usan fake; T151 ejecutó una sola vez,
+  T152–T153 documentaron y T173 verificó/aceptó la evidencia sin repetir el probe.
 - **Transacciones largas**: T091–T094 y T111–T113 separan persistencia de inferencia.
 - **Mezcla de generaciones**: T112/T118 exigen swap lógico y consistencia concurrente.
 - **Fuga de datos**: T139–T142 y T175 verifican redacción y alcance.
@@ -406,7 +406,7 @@ T143 corpus fixture | T144 query dataset | T148 metric unit tests
 
 - Las 175 tareas conservan formato checkbox + ID + etiquetas + ruta/comando.
 - Ninguna tarea se considera completa al generar este archivo.
-- G1-B puede permanecer pendiente sin bloquear implementación/migración/tests fake;
-  solo bloquea aceptación operativa remota, cierre externo y smoke real.
-- El veredicto operativo actual es `BLOCKED_EXTERNAL` por G1-B; las tareas locales
+- G1-B está validado para `/api/embeddings`; un cambio de endpoint o proxy requiere
+  repetir el probe externo, mientras los tests ordinarios continúan usando fake.
+- El veredicto operativo actual es `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`; las tareas locales
   implementables quedan respaldadas por tests y no se ejecuta un segundo probe.

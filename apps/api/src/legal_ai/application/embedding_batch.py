@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from legal_ai.domain.corpus import validate_embedding
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
 from legal_ai.ports.embedding import (
     EmbeddingProvider,
     InferenceCoordinationPort,
@@ -20,10 +21,10 @@ class EmbeddingBatchProcessor:
         provider: EmbeddingProvider,
         coordinator: InferenceCoordinationPort,
         *,
-        dimensions: int = 1024,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         timeout_seconds: float = 30.0,
     ) -> None:
-        if dimensions != 1024 or timeout_seconds <= 0:
+        if dimensions != EMBEDDING_DIMENSIONS or timeout_seconds <= 0:
             raise ValueError("EMBEDDING_BATCH_CONFIGURATION_INVALID")
         self._provider = provider
         self._coordinator = coordinator

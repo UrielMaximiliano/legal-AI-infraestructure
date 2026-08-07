@@ -170,6 +170,6 @@ def test_chunk_invariants_protect_content_state_and_embedding_metadata() -> None
     with pytest.raises(CorpusDomainError, match="EMBEDDING_REQUIRED"):
         CorpusChunk(content="content", state="ACTIVE", **common)
     with pytest.raises(CorpusDomainError, match="EMBEDDING_METADATA_INVALID"):
-        CorpusChunk(content="content", embedding=tuple([0.0] * 1024), **common)
+        CorpusChunk(content="content", embedding=tuple([0.0] * 2560), **common)
     with pytest.raises(CorpusDomainError, match="INDEX_INVALID"):
         CorpusChunk(content="content", token_count=-1, **common)

@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -20,14 +22,74 @@ async def test_request_bearer_batch_and_dimension() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer secret"
         assert request.url.path == "/api/embed"
-        return httpx.Response(200, json={"embeddings": [[0.0] * 1024, [1.0] * 1024]})
+        return httpx.Response(200, json={"embeddings": [[0.0] * 2560, [1.0] * 2560]})
 
     adapter, client = make_adapter(handler)
     try:
         result = await adapter.embed_documents(["a", "b"])
-        assert len(result) == 2 and len(result[0]) == 1024
+        assert len(result) == 2 and len(result[0]) == 2560
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_legacy_endpoint_uses_sequential_prompts() -> None:
+    prompts: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/embeddings"
+        payload = request.content
+        assert b'"input"' not in payload
+        assert b'"dimensions"' not in payload
+        decoded = json.loads(payload)
+        prompts.append(decoded["prompt"])
+        return httpx.Response(200, json={"embedding": [float(len(prompts))] * 2560})
+
+    adapter, client = make_adapter(handler)
+    adapter = OllamaEmbeddingAdapter(
+        base_url="https://ollama.test",
+        api_token="secret",
+        endpoint="/api/embeddings",
+        client=client,
+    )
+    try:
+        result = await adapter.embed_documents(["first", "second"])
+        assert prompts == ["first", "second"]
+        assert [vector[0] for vector in result] == [1.0, 2.0]
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reverse_proxy_prefix_is_preserved() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/ollama/api/embeddings"
+        return httpx.Response(200, json={"embedding": [0.0] * 2560})
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(
+        transport=transport, base_url="https://ollama.test/ollama"
+    )
+    adapter = OllamaEmbeddingAdapter(
+        base_url="https://ollama.test/ollama",
+        api_token="secret",
+        endpoint="/api/embeddings",
+        client=client,
+    )
+    try:
+        result = await adapter.embed_query("synthetic")
+        assert len(result) == 2560
+    finally:
+        await client.aclose()
+
+
+def test_unknown_embedding_endpoint_is_rejected() -> None:
+    with pytest.raises(ValueError, match="ENDPOINT"):
+        OllamaEmbeddingAdapter(
+            base_url="https://ollama.test",
+            api_token="secret",
+            endpoint="/api/unknown",
+        )
 
 
 @pytest.mark.asyncio
@@ -52,12 +114,12 @@ async def test_invalid_response_and_no_retry_for_auth() -> None:
 @pytest.mark.asyncio
 async def test_count_dimension_nan_and_empty_are_rejected() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"embeddings": [[0.0] * 1024]})
+        return httpx.Response(200, json={"embeddings": [[0.0] * 2560]})
 
     adapter, client = make_adapter(handler)
     try:
         with pytest.raises(OllamaEmbeddingError):
-            adapter._validate([[float("nan")] * 1024], 1)
+            adapter._validate([[float("nan")] * 2560], 1)
         with pytest.raises(OllamaEmbeddingError):
             await adapter.embed_documents([])
     finally:
@@ -112,12 +174,12 @@ async def test_gateway_errors_succeed_after_one_retry(status: int) -> None:
         calls += 1
         if calls == 1:
             return httpx.Response(status, request=request, json={"error": "transient"})
-        return httpx.Response(200, request=request, json={"embeddings": [[0.0] * 1024]})
+        return httpx.Response(200, request=request, json={"embeddings": [[0.0] * 2560]})
 
     adapter, client = make_adapter(handler)
     try:
         result = await adapter.embed_query("synthetic")
-        assert len(result) == 1024
+        assert len(result) == 2560
         assert calls == 2
     finally:
         await client.aclose()
@@ -132,12 +194,12 @@ async def test_transient_connection_error_is_retried_and_sanitized() -> None:
         calls += 1
         if calls < 3:
             raise httpx.ConnectError("secret connection details", request=request)
-        return httpx.Response(200, request=request, json={"embeddings": [[0.0] * 1024]})
+        return httpx.Response(200, request=request, json={"embeddings": [[0.0] * 2560]})
 
     adapter, client = make_adapter(handler)
     try:
         result = await adapter.embed_query("synthetic")
-        assert len(result) == 1024
+        assert len(result) == 2560
         assert calls == 3
     finally:
         await client.aclose()

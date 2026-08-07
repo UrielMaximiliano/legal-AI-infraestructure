@@ -9,12 +9,14 @@ ese alias; las instalaciones nuevas deben usar `OLLAMA_EMBEDDING_TOKEN`.
 
 ## Incremento 005: ingesta y recuperación semántica
 
-La configuración contractual usa `qwen3-embedding:0.6b` con `EMBEDDING_DIMENSIONS=1024`
-(`vector(1024)`). La búsqueda filtra `REVIEWED` por defecto y la ingesta es dry-run
+La configuración contractual usa `qwen3-embedding:4b-q4_K_M` con `EMBEDDING_DIMENSIONS=2560`
+(`halfvec(2560)`). La búsqueda filtra `REVIEWED` por defecto y la ingesta es dry-run
 salvo que se indique explícitamente `--execute`. `OLLAMA_API_TOKEN` se suministra
 únicamente por el entorno; nunca se registra ni se persiste. La ruta de producción
-es local Docker → HTTPS/Bearer → Ollama remoto; G1-B permanece pendiente hasta
-validar esa conectividad end-to-end.
+es local Docker → HTTPS/Bearer → Ollama remoto. Configure
+`OLLAMA_EMBEDDING_ENDPOINT=/api/embed` para batch nativo o
+`/api/embeddings` para el proxy externo legado (batch secuencial a nivel de
+aplicación); no existe fallback implícito.
 
 ## Incremento 004: revisión humana y exportación documental
 
@@ -123,7 +125,7 @@ corpus reindex --document-id <uuid> --execute --run-id <opaque-run-id>
 ```
 
 La ingesta dry-run no solicita embeddings ni escribe PostgreSQL. La ejecución y
-reindexación usan `qwen3-embedding:0.6b` con 1024 dimensiones, generaciones
+reindexación usan `qwen3-embedding:4b-q4_K_M` con 2560 dimensiones, generaciones
 STAGED y swap atómico. La búsqueda `POST /api/v1/semantic-search` exige los
 filtros MVP y devuelve solo documentos `REVIEWED` por defecto; su auditoría es
 fail-closed. Consulte [docs/corpus-semantic-retrieval.md](docs/corpus-semantic-retrieval.md)

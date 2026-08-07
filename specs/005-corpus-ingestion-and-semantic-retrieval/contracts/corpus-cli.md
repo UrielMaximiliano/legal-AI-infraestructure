@@ -1,6 +1,6 @@
 # Contrato CLI — Corpus 005
 
-**Status**: `IMPLEMENTATION_EXTERNAL_GATE_PENDING`
+**Status**: `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`
 
 ## Convenciones
 
@@ -94,10 +94,14 @@ Los errores nunca incluyen contenido, ORM, paths, secretos o datos sensibles.
 
 ## `corpus probe-embedding`
 
-Comando opt-in para validar G1-B con el contrato ya fijado. Opciones: `--model
-qwen3-embedding:0.6b`, `--expected-dimensions 1024`, `--repeat 3`, `--output
-json`. Se ejecuta desde Docker/local contra `OLLAMA_BASE_URL`, usa textos
-sintéticos y nunca imprime inputs, URL completa, Authorization o token.
+Comando opt-in para validar G1-B con el contrato ya fijado. Opciones: endpoint
+`--endpoint /api/embed|/api/embeddings`, `--model qwen3-embedding:4b-q4_K_M`,
+`--expected-dimensions 2560`, `--repeat 3`, `--output json`. El endpoint también
+puede configurarse con `OLLAMA_EMBEDDING_ENDPOINT`. `/api/embed` usa batch
+nativo; `/api/embeddings` se ejecuta secuencialmente por prompt para conservar
+la semántica de batch sin asumir soporte de transporte. Se ejecuta desde
+Docker/local contra `OLLAMA_BASE_URL`, usa textos sintéticos y nunca imprime
+inputs, URL completa, Authorization o token.
 
 Salida: versión Ollama, tag/digest, dimensión nativa, dimensión solicitada,
 cantidad de vectores, finitud, estabilidad, latencias, soporte y timestamp.

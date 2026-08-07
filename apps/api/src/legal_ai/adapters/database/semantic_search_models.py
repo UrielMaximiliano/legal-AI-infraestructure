@@ -28,6 +28,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from legal_ai.domain.semantic_search import SemanticSearchStatus
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
 
 from .models import Base
 
@@ -52,7 +53,8 @@ class SemanticSearchRunModel(Base):
             "query_hash ~ '^[0-9a-f]{64}$'", name="ck_semantic_search_runs_query_hash"
         ),
         CheckConstraint(
-            "embedding_dimensions = 1024", name="ck_semantic_search_runs_dimensions"
+            f"embedding_dimensions = {EMBEDDING_DIMENSIONS}",
+            name="ck_semantic_search_runs_dimensions",
         ),
         CheckConstraint(
             "top_k > 0 AND result_count >= 0 AND duration_ms >= 0",
@@ -145,7 +147,7 @@ class HumanRetrievalEvaluationModel(Base):
             name="ck_human_retrieval_evaluations_score",
         ),
         CheckConstraint(
-            "embedding_dimensions = 1024",
+            f"embedding_dimensions = {EMBEDDING_DIMENSIONS}",
             name="ck_human_retrieval_evaluations_dimensions",
         ),
         UniqueConstraint(

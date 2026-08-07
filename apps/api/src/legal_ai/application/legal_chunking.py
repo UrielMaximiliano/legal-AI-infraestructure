@@ -82,9 +82,7 @@ _MARKERS: tuple[tuple[re.Pattern[str], SectionType], ...] = (
         SectionType.AUTHORITY,
     ),
     (
-        re.compile(
-            r"^\s*(?:FIRMA|FIRMADO|FDO\.?|SIGNED|SIGNATURE)\b", re.IGNORECASE
-        ),
+        re.compile(r"^\s*(?:FIRMA|FIRMADO|FDO\.?|SIGNED|SIGNATURE)\b", re.IGNORECASE),
         SectionType.SIGNATURE,
     ),
 )

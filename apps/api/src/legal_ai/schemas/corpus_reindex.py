@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+
 
 class CorpusReindexRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -17,8 +19,8 @@ class CorpusReindexRequest(BaseModel):
     jurisdiction: str = "nacion"
     language: str | None = None
     organization: str | None = None
-    model: str = "qwen3-embedding:0.6b"
-    dimensions: int = Field(default=1024, gt=0)
+    model: str = EMBEDDING_MODEL
+    dimensions: int = Field(default=EMBEDDING_DIMENSIONS, gt=0)
     normalization_version: str = "005-nfc-v1"
     chunking_version: str = "005-legal-v1"
     batch_size: int = Field(default=16, gt=0, le=256)
@@ -27,7 +29,7 @@ class CorpusReindexRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> CorpusReindexRequest:
-        if self.model != "qwen3-embedding:0.6b" or self.dimensions != 1024:
+        if self.model != EMBEDDING_MODEL or self.dimensions != EMBEDDING_DIMENSIONS:
             raise ValueError("EMBEDDING_CONTRACT_INVALID")
         if not self.document_ids and (
             not self.document_type.strip()

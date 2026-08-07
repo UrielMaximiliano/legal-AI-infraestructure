@@ -29,9 +29,7 @@ CASE_ID = UUID("22222222-2222-4222-8222-222222222222")
 
 
 def _relative() -> str:
-    return LocalArtifactStorage.build_relative_path(
-        CASE_ID, DRAFT_ID, "DOCX", 1
-    )
+    return LocalArtifactStorage.build_relative_path(CASE_ID, DRAFT_ID, "DOCX", 1)
 
 
 def test_storage_is_relative_and_atomic(tmp_path: Path) -> None:

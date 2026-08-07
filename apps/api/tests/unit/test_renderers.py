@@ -74,11 +74,7 @@ def test_docx_renderer_writes_institutional_document(tmp_path: Path) -> None:
     PythonDocxRenderer().render(_snapshot(), output)
     assert output.is_file()
     assert output.stat().st_size > 0
-    assert (
-        ArtifactIntegrityValidator().validate_docx(
-            output, declared_mime=DOCX_MIME
-        )
-    )
+    assert ArtifactIntegrityValidator().validate_docx(output, declared_mime=DOCX_MIME)
     assert PythonDocxRenderer.timeout_seconds == 30
 
 
@@ -174,7 +170,7 @@ def test_supervisor_timeout_sequence_is_terminate_grace_kill_join(
         return process
 
     with pytest.raises(GenerationTimeoutError):
-        RendererSupervisor(
-            grace_seconds=0.01, process_factory=factory
-        ).run(_SuccessRenderer(), {}, tmp_path / "out.pdf", timeout_seconds=1)
+        RendererSupervisor(grace_seconds=0.01, process_factory=factory).run(
+            _SuccessRenderer(), {}, tmp_path / "out.pdf", timeout_seconds=1
+        )
     assert created[0].calls == ["start", "join", "terminate", "join", "kill", "join"]

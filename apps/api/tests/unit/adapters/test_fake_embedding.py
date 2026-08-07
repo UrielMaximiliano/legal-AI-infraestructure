@@ -15,7 +15,7 @@ async def test_deterministic_documents_query_batch_and_dimension() -> None:
     first = await provider.embed_documents(["texto jurídico", "otro texto"])
     second = await provider.embed_documents(["texto jurídico", "otro texto"])
     assert first == second
-    assert len(first) == 2 and len(first[0]) == 1024
+    assert len(first) == 2 and len(first[0]) == 2560
     assert await provider.embed_query("texto jurídico") == first[0]
     assert all(math.isfinite(value) for value in first[0])
 

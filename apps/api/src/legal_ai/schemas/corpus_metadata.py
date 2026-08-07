@@ -54,9 +54,7 @@ class CorpusMetadata(BaseModel):
     normalization_version: str = Field(
         default="005-nfc-v1", min_length=1, max_length=100
     )
-    chunking_version: str = Field(
-        default="005-legal-v1", min_length=1, max_length=100
-    )
+    chunking_version: str = Field(default="005-legal-v1", min_length=1, max_length=100)
     pipeline_version: str = Field(default="005", min_length=1, max_length=100)
 
     @field_validator("external_id")

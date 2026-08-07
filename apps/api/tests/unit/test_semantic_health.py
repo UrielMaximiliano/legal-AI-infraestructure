@@ -22,8 +22,8 @@ async def test_health_reports_model_dimension_mismatch_without_details() -> None
     client.post.return_value = show
     result = await OllamaHealthAdapter(
         client,
-        expected_model="qwen3-embedding:0.6b",
-        expected_dimensions=1024,
+        expected_model="qwen3-embedding:4b-q4_K_M",
+        expected_dimensions=2560,
     ).check()
     assert result.status == HealthStatus.MISCONFIGURED
     assert result.error_code == "OLLAMA_DIMENSIONS_INCOMPATIBLE"

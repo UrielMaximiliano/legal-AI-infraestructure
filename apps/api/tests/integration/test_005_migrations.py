@@ -33,6 +33,7 @@ from legal_ai.adapters.database.semantic_search_models import (
     HumanRetrievalEvaluationModel,
     SemanticSearchRunModel,
 )
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 
 NEW_TABLES = {
     "corpus_documents",
@@ -659,8 +660,10 @@ def _chunk_values(
         "content_hash": content_hash,
         "token_count": 1,
         "embedding": embedding,
-        "embedding_model": "qwen3-embedding:0.6b" if embedding is not None else None,
-        "embedding_dimensions": 1024 if embedding is not None else None,
+        "embedding_model": EMBEDDING_MODEL if embedding is not None else None,
+        "embedding_dimensions": (
+            EMBEDDING_DIMENSIONS if embedding is not None else None
+        ),
         "normalization_version": "v1",
         "chunking_version": "v1",
         "metadata": {},
@@ -670,7 +673,7 @@ def _chunk_values(
 @pytest.mark.integration
 async def test_005_upgrade_has_contractual_schema_and_orm_mapping() -> None:
     _run_alembic("downgrade", "004")
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     try:
         assert await _tables() >= NEW_TABLES
         document_columns = await _column_metadata("corpus_documents")
@@ -744,7 +747,7 @@ async def test_005_upgrade_has_contractual_schema_and_orm_mapping() -> None:
                         "WHERE c.relname = 'corpus_chunks' AND a.attname = 'embedding'"
                     )
                 )
-                assert vector_type == "vector(1024)"
+                assert vector_type == "halfvec(2560)"
                 trigger_names = set(
                     (
                         await connection.execute(
@@ -830,12 +833,12 @@ async def test_005_upgrade_has_contractual_schema_and_orm_mapping() -> None:
         finally:
             await engine.dispose()
     finally:
-        _run_alembic("upgrade", "005")
+        _run_alembic("upgrade", "head")
 
 
 @pytest.mark.integration
 async def test_005_partial_unique_indexes_enforce_only_live_identities() -> None:
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     engine = create_engine()
     documents = CorpusDocumentModel.__table__
     chunks = CorpusChunkModel.__table__
@@ -852,9 +855,7 @@ async def test_005_partial_unique_indexes_enforce_only_live_identities() -> None
             )
             await connection.execute(documents.insert().values(**source_live))
 
-            source_collision = _document_values(
-                uuid.uuid4(), active_generation=None
-            )
+            source_collision = _document_values(uuid.uuid4(), active_generation=None)
             source_collision.update(
                 source_name="partial-source",
                 external_id="shared-external",
@@ -919,7 +920,7 @@ async def test_005_partial_unique_indexes_enforce_only_live_identities() -> None
                         state="ACTIVE",
                         section_index=0,
                         content_hash="c" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     )
                 )
             )
@@ -978,7 +979,7 @@ async def test_005_partial_unique_indexes_enforce_only_live_identities() -> None
                         state="ACTIVE",
                         section_index=0,
                         content_hash="d" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     )
                 )
             )
@@ -991,18 +992,22 @@ async def test_005_partial_unique_indexes_enforce_only_live_identities() -> None
             predicates = dict(
                 tuple(
                     await connection.execute(
-                    text(
-                        "SELECT ic.relname, pg_get_expr(i.indpred, i.indrelid) "
-                        "FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid "
-                        "WHERE ic.relname IN ('uq_corpus_documents_source_external', "
-                        "'uq_corpus_documents_identity_active')"
-                    )
+                        text(
+                            "SELECT ic.relname, pg_get_expr(i.indpred, i.indrelid) "
+                            "FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid "
+                            "WHERE ic.relname IN ("
+                            "'uq_corpus_documents_source_external', "
+                            "'uq_corpus_documents_identity_active')"
+                        )
                     )
                 )
             )
-            assert _normalize_catalog_sql(
-                predicates["uq_corpus_documents_source_external"]
-            ) == "((ingestion_status)::text <> 'FAILED'::text)"
+            assert (
+                _normalize_catalog_sql(
+                    predicates["uq_corpus_documents_source_external"]
+                )
+                == "((ingestion_status)::text <> 'FAILED'::text)"
+            )
             assert _normalize_catalog_sql(
                 predicates["uq_corpus_documents_identity_active"]
             ) == (
@@ -1010,6 +1015,18 @@ async def test_005_partial_unique_indexes_enforce_only_live_identities() -> None
                 "((ingestion_status)::text <> 'FAILED'::text))"
             )
     finally:
+        cleanup_engine = create_engine()
+        try:
+            async with cleanup_engine.begin() as connection:
+                await connection.execute(
+                    documents.delete().where(
+                        documents.c.source_name.in_(
+                            ("partial-source", "identity-active", "identity-inactive")
+                        )
+                    )
+                )
+        finally:
+            await cleanup_engine.dispose()
         await engine.dispose()
 
 
@@ -1019,7 +1036,7 @@ async def test_005_round_trip_preserves_001_to_004_and_pgvector() -> None:
     try:
         fixture_id = await _insert_legacy_fixture()
         before = await _legacy_snapshot()
-        _run_alembic("upgrade", "005")
+        _run_alembic("upgrade", "head")
         after_upgrade = await _legacy_snapshot()
         assert after_upgrade == before
 
@@ -1083,17 +1100,17 @@ async def test_005_round_trip_preserves_001_to_004_and_pgvector() -> None:
         finally:
             await engine.dispose()
 
-        _run_alembic("upgrade", "005")
+        _run_alembic("upgrade", "head")
         assert await _tables() >= NEW_TABLES
     finally:
-        _run_alembic("upgrade", "005")
+        _run_alembic("upgrade", "head")
         if "fixture_id" in locals():
             await _delete_legacy_fixture(fixture_id)
 
 
 @pytest.mark.integration
 async def test_005_generation_constraints_allow_atomic_swap_and_rollback() -> None:
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     document_id = uuid.uuid4()
     first_chunk_id = uuid.uuid4()
     second_chunk_id = uuid.uuid4()
@@ -1114,7 +1131,7 @@ async def test_005_generation_constraints_allow_atomic_swap_and_rollback() -> No
                         state="ACTIVE",
                         section_index=0,
                         content_hash="c" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     )
                 )
             )
@@ -1143,7 +1160,7 @@ async def test_005_generation_constraints_allow_atomic_swap_and_rollback() -> No
                             state="ACTIVE",
                             section_index=1,
                             content_hash="d" * 64,
-                            embedding=[0.0] * 1024,
+                            embedding=[0.0] * 2560,
                         )
                     )
                 )
@@ -1163,7 +1180,7 @@ async def test_005_generation_constraints_allow_atomic_swap_and_rollback() -> No
                         state="ACTIVE",
                         section_index=1,
                         content_hash="d" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     )
                 )
             )
@@ -1205,7 +1222,7 @@ async def test_005_generation_constraints_allow_atomic_swap_and_rollback() -> No
 
 @pytest.mark.integration
 async def test_005_generation_trigger_validates_old_and_new_on_reparent() -> None:
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     old_document_id = uuid.uuid4()
     new_document_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
@@ -1228,7 +1245,7 @@ async def test_005_generation_trigger_validates_old_and_new_on_reparent() -> Non
                         state="ACTIVE",
                         section_index=0,
                         content_hash="e" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     )
                 )
             )
@@ -1314,7 +1331,7 @@ async def test_005_generation_trigger_validates_old_and_new_on_reparent() -> Non
 
 @pytest.mark.integration
 async def test_005_generation_reparent_rejects_invalid_new_document() -> None:
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     old_document_id = uuid.uuid4()
     new_document_id = uuid.uuid4()
     old_chunk_id = uuid.uuid4()
@@ -1339,7 +1356,7 @@ async def test_005_generation_reparent_rejects_invalid_new_document() -> None:
                         state="ACTIVE",
                         section_index=0,
                         content_hash="3" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     ),
                     _chunk_values(
                         new_document_id,
@@ -1348,7 +1365,7 @@ async def test_005_generation_reparent_rejects_invalid_new_document() -> None:
                         state="ACTIVE",
                         section_index=0,
                         content_hash="4" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     ),
                 ],
             )
@@ -1413,7 +1430,7 @@ async def test_005_generation_reparent_rejects_invalid_new_document() -> None:
 
 @pytest.mark.integration
 async def test_005_concurrent_generation_swaps_have_one_winner() -> None:
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     document_id = uuid.uuid4()
     initial_chunk_id = uuid.uuid4()
     engine = create_engine()
@@ -1433,7 +1450,7 @@ async def test_005_concurrent_generation_swaps_have_one_winner() -> None:
                         state="ACTIVE",
                         section_index=0,
                         content_hash="f" * 64,
-                        embedding=[0.0] * 1024,
+                        embedding=[0.0] * 2560,
                     )
                 )
             )
@@ -1459,7 +1476,7 @@ async def test_005_concurrent_generation_swaps_have_one_winner() -> None:
                             state="ACTIVE",
                             section_index=generation,
                             content_hash=hash_character * 64,
-                            embedding=[0.0] * 1024,
+                            embedding=[0.0] * 2560,
                         )
                     )
                 )
@@ -1502,7 +1519,7 @@ async def test_005_concurrent_generation_swaps_have_one_winner() -> None:
 
 @pytest.mark.integration
 async def test_005_hash_and_search_audit_checks_are_enforced() -> None:
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     document_id = uuid.uuid4()
     valid_document_id = uuid.uuid4()
     search_id = uuid.uuid4()
@@ -1553,8 +1570,8 @@ async def test_005_hash_and_search_audit_checks_are_enforced() -> None:
                         },
                         top_k=3,
                         minimum_score=None,
-                        embedding_model="qwen3-embedding:0.6b",
-                        embedding_dimensions=1024,
+                        embedding_model="qwen3-embedding:4b-q4_K_M",
+                        embedding_dimensions=2560,
                         result_count=0,
                         duration_ms=1,
                         status="SUCCEEDED",
@@ -1571,8 +1588,8 @@ async def test_005_hash_and_search_audit_checks_are_enforced() -> None:
                         filters_sanitized={},
                         top_k=3,
                         minimum_score=None,
-                        embedding_model="qwen3-embedding:0.6b",
-                        embedding_dimensions=1024,
+                        embedding_model="qwen3-embedding:4b-q4_K_M",
+                        embedding_dimensions=2560,
                         result_count=0,
                         duration_ms=1,
                         status="FAILED",
@@ -1594,8 +1611,8 @@ async def test_005_hash_and_search_audit_checks_are_enforced() -> None:
                         },
                         top_k=3,
                         minimum_score=None,
-                        embedding_model="qwen3-embedding:0.6b",
-                        embedding_dimensions=1024,
+                        embedding_model="qwen3-embedding:4b-q4_K_M",
+                        embedding_dimensions=2560,
                         result_count=0,
                         duration_ms=1,
                         status="SUCCEEDED",
@@ -1618,8 +1635,8 @@ async def test_005_hash_and_search_audit_checks_are_enforced() -> None:
                         },
                         top_k=3,
                         minimum_score=None,
-                        embedding_model="qwen3-embedding:0.6b",
-                        embedding_dimensions=1024,
+                        embedding_model="qwen3-embedding:4b-q4_K_M",
+                        embedding_dimensions=2560,
                         result_count=0,
                         duration_ms=1,
                         status="SUCCEEDED",
@@ -1640,8 +1657,8 @@ async def test_005_hash_and_search_audit_checks_are_enforced() -> None:
                     },
                     top_k=3,
                     minimum_score=None,
-                    embedding_model="qwen3-embedding:0.6b",
-                    embedding_dimensions=1024,
+                    embedding_model="qwen3-embedding:4b-q4_K_M",
+                    embedding_dimensions=2560,
                     result_count=0,
                     duration_ms=1,
                     status="FAILED",
@@ -1661,7 +1678,7 @@ async def test_005_hash_and_search_audit_checks_are_enforced() -> None:
             )
         await engine.dispose()
 
-    _run_alembic("upgrade", "005")
+    _run_alembic("upgrade", "head")
     assert await _tables() >= NEW_TABLES
 
 

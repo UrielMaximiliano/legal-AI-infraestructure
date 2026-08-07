@@ -11,6 +11,7 @@ from legal_ai.adapters.database.corpus_chunk_repository import (
 from legal_ai.adapters.database.engine import create_engine
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.domain.corpus import CorpusChunk, CorpusDocument, sha256_text
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 
 
 def test_chunk_repository_is_explicitly_named() -> None:
@@ -42,9 +43,9 @@ async def test_staged_generation_can_be_swapped_atomically() -> None:
         generation=1,
         section_index=0,
         paragraph_index=0,
-        embedding=tuple([0.0] * 1024),
-        embedding_model="qwen3-embedding:0.6b",
-        embedding_dimensions=1024,
+        embedding=tuple([0.0] * EMBEDDING_DIMENSIONS),
+        embedding_model=EMBEDDING_MODEL,
+        embedding_dimensions=EMBEDDING_DIMENSIONS,
     )
     try:
         async with UnitOfWork() as uow:

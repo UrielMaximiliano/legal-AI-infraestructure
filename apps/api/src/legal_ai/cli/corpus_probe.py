@@ -12,8 +12,13 @@ from typing import Any
 
 import httpx
 
-MODEL = "qwen3-embedding:0.6b"
-DIMENSIONS = 1024
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+
+MODEL = EMBEDDING_MODEL
+DIMENSIONS = EMBEDDING_DIMENSIONS
+NATIVE_ENDPOINT = "/api/embed"
+LEGACY_ENDPOINT = "/api/embeddings"
+ALLOWED_ENDPOINTS = frozenset({NATIVE_ENDPOINT, LEGACY_ENDPOINT})
 _DOCUMENTS = (
     "El decreto dispone una designaciÃ³n transitoria conforme a la Ley NÂ° 27.000.",
     "VISTO el expediente EX-2026-00000001 y CONSIDERANDO las competencias legales.",
@@ -26,16 +31,21 @@ def _vector_digest(vectors: Any) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def _validate_vectors(body: Any, count: int) -> tuple[int, bool, str]:
-    vectors = body.get("embeddings") if isinstance(body, dict) else None
+def _validate_vectors(
+    body: Any, count: int, *, endpoint: str = NATIVE_ENDPOINT
+) -> tuple[int, bool, str]:
+    if endpoint == NATIVE_ENDPOINT:
+        vectors = body.get("embeddings") if isinstance(body, dict) else None
+    else:
+        embedding = body.get("embedding") if isinstance(body, dict) else None
+        vectors = [embedding] if embedding is not None else None
     if not isinstance(vectors, list) or len(vectors) != count:
         raise ValueError("G1_EMBEDDING_COUNT_MISMATCH")
     finite = all(
         isinstance(vector, list)
         and len(vector) == DIMENSIONS
         and all(
-            isinstance(value, (int, float)) and math.isfinite(value)
-            for value in vector
+            isinstance(value, (int, float)) and math.isfinite(value) for value in vector
         )
         for vector in vectors
     )
@@ -44,11 +54,18 @@ def _validate_vectors(body: Any, count: int) -> tuple[int, bool, str]:
     return len(vectors), finite, _vector_digest(vectors)
 
 
-async def probe(base_url: str, token: str, timeout: float = 10.0) -> dict[str, object]:
+async def probe(
+    base_url: str,
+    token: str,
+    timeout: float = 10.0,
+    endpoint: str = NATIVE_ENDPOINT,
+) -> dict[str, object]:
     if not base_url.startswith("https://"):
         raise ValueError("G1_EXTERNAL_HTTPS_REQUIRED")
     if not token:
         raise ValueError("G1_BEARER_TOKEN_REQUIRED")
+    if endpoint not in ALLOWED_ENDPOINTS:
+        raise ValueError("G1_EMBEDDING_ENDPOINT_INVALID")
     started = time.monotonic()
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(
@@ -63,31 +80,52 @@ async def probe(base_url: str, token: str, timeout: float = 10.0) -> dict[str, o
         show_response = await client.post("/api/show", json={"name": MODEL})
         if show_response.status_code != 200:
             raise ValueError("G1_SHOW_FAILED")
-        first = await client.post(
-            "/api/embed",
-            json={"model": MODEL, "input": list(_DOCUMENTS), "dimensions": DIMENSIONS},
-        )
-        if first.status_code != 200:
-            raise ValueError("G1_EMBED_FAILED")
-        count, finite, digest = _validate_vectors(first.json(), len(_DOCUMENTS))
-        second = await client.post(
-            "/api/embed",
-            json={"model": MODEL, "input": list(_DOCUMENTS), "dimensions": DIMENSIONS},
-        )
-        if second.status_code != 200:
-            raise ValueError("G1_STABILITY_FAILED")
-        _, _, second_digest = _validate_vectors(second.json(), len(_DOCUMENTS))
-        query = await client.post(
-            "/api/embed",
-            json={"model": MODEL, "input": [_QUERY], "dimensions": DIMENSIONS},
-        )
-        if query.status_code != 200:
-            raise ValueError("G1_QUERY_FAILED")
-        query_count, query_finite, _ = _validate_vectors(query.json(), 1)
+
+        async def embed_documents(documents: tuple[str, ...]) -> tuple[int, bool, str]:
+            if endpoint == NATIVE_ENDPOINT:
+                response = await client.post(
+                    endpoint,
+                    json={
+                        "model": MODEL,
+                        "input": list(documents),
+                        "dimensions": DIMENSIONS,
+                    },
+                )
+                if response.status_code != 200:
+                    raise ValueError("G1_EMBED_FAILED")
+                return _validate_vectors(
+                    response.json(), len(documents), endpoint=endpoint
+                )
+
+            vectors: list[list[float]] = []
+            for document in documents:
+                response = await client.post(
+                    endpoint, json={"model": MODEL, "prompt": document}
+                )
+                if response.status_code != 200:
+                    raise ValueError("G1_EMBED_FAILED")
+                payload = response.json()
+                _validate_vectors(payload, 1, endpoint=endpoint)
+                embedding = payload.get("embedding")
+                if not isinstance(embedding, list):
+                    raise ValueError("G1_EMBEDDING_VECTOR_INVALID")
+                vectors.append(embedding)
+            return _validate_vectors(
+                {"embeddings": vectors}, len(documents), endpoint=NATIVE_ENDPOINT
+            )
+
+        count, finite, digest = await embed_documents(_DOCUMENTS)
+        _, _, second_digest = await embed_documents(_DOCUMENTS)
+        query_count, query_finite, _ = await embed_documents((_QUERY,))
     return {
         "status": "passed",
         "model": MODEL,
         "dimensions": DIMENSIONS,
+        "endpoint": endpoint,
+        "transport_batch_supported": endpoint == NATIVE_ENDPOINT,
+        "application_batch_mode": (
+            "native" if endpoint == NATIVE_ENDPOINT else "sequential"
+        ),
         "version_present": isinstance(version_body, dict)
         and isinstance(version_body.get("version"), str),
         "show_status": "ok",
@@ -110,6 +148,12 @@ def main(argv: list[str] | None = None) -> int:
         or os.getenv("OLLAMA_BASE_URL", ""),
     )
     parser.add_argument(
+        "--endpoint",
+        default=os.getenv("OLLAMA_EMBEDDING_ENDPOINT", NATIVE_ENDPOINT),
+        choices=sorted(ALLOWED_ENDPOINTS),
+        help="Embedding endpoint profile exposed by the Ollama proxy.",
+    )
+    parser.add_argument(
         "--token",
         default=os.getenv("OLLAMA_EMBEDDING_TOKEN")
         or os.getenv("OLLAMA_API_TOKEN", ""),
@@ -119,7 +163,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         import asyncio
 
-        result = asyncio.run(probe(args.base_url, args.token, args.timeout))
+        result = asyncio.run(
+            probe(args.base_url, args.token, args.timeout, args.endpoint)
+        )
         print(
             json.dumps(
                 result,

@@ -155,9 +155,11 @@ async def test_dry_run_uses_persisted_read_only_deduplication(tmp_path: Path) ->
     )
     from legal_ai.application.corpus_normalization import CorpusNormalizationService
 
-    normalized_hash = CorpusNormalizationService().normalize(
-        "ARTÃCULO 1Â°.- Uno"
-    ).normalized_content_hash
+    normalized_hash = (
+        CorpusNormalizationService()
+        .normalize("ARTÃCULO 1Â°.- Uno")
+        .normalized_content_hash
+    )
     lookup = LookupSpy(
         records=(
             CorpusDeduplicationRecord(

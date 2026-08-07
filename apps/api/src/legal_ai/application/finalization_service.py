@@ -122,9 +122,7 @@ class FinalizationService:
         return notes or None
 
     @staticmethod
-    def _snapshot(
-        draft: Draft, review: DocumentReview
-    ) -> SerializedCanonicalDocument:
+    def _snapshot(draft: Draft, review: DocumentReview) -> SerializedCanonicalDocument:
         return CanonicalDocumentBuilder.serialize(
             CanonicalDocumentBuilder.build(draft, review)
         )

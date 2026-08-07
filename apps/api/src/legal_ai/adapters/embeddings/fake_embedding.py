@@ -7,6 +7,8 @@ import hashlib
 import math
 from collections.abc import Sequence
 
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
+
 
 class FakeEmbeddingError(RuntimeError):
     """Sanitized configurable fake failure."""
@@ -18,7 +20,7 @@ class FakeEmbeddingProvider:
     def __init__(
         self,
         *,
-        dimensions: int = 1024,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         failure: str | None = None,
         failure_mode: str | None = None,
         invalid_vector: str | None = None,
@@ -26,8 +28,10 @@ class FakeEmbeddingProvider:
         timeout_error: bool = False,
         fail_after: int | None = None,
     ) -> None:
-        if dimensions != 1024:
-            raise ValueError("EMBEDDING_DIMENSIONS debe ser 1024")
+        if dimensions != EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}"
+            )
         if delay_seconds < 0:
             raise ValueError("FAKE_EMBEDDING_DELAY_INVALID")
         self.dimensions = dimensions

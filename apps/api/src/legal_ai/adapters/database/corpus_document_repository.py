@@ -284,9 +284,7 @@ async def _upsert(
             return CorpusDocumentUpsertResult(
                 "UNCHANGED", corpus_document_from_model(model)
             )
-        return CorpusDocumentUpsertResult(
-            "CREATED", corpus_document_from_model(model)
-        )
+        return CorpusDocumentUpsertResult("CREATED", corpus_document_from_model(model))
 
     pipeline_version = str(document.metadata.get("pipeline_version", "005"))
     content_unchanged = (

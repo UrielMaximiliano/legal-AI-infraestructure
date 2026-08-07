@@ -1,36 +1,40 @@
 # Investigación: Corpus ingestion y semantic retrieval
 
 **Fecha**: 2026-08-04
-**Estado**: modelo y dimensión confirmados empíricamente en Ollama; conectividad
-externa end-to-end pendiente.
+**Estado**: modelo y dimensión confirmados empíricamente en Ollama; perfil
+externo `/api/embeddings` validado end-to-end desde Docker/local.
 
 ## R1 — Modelo y endpoint Ollama
 
-**Decisión**: usar el tag exacto `qwen3-embedding:0.6b` y `POST /api/embed`
-con `input` string o array, `truncate=false` y `keep_alive` acotado/omitido.
+**Decisión vigente**: usar el tag exacto `qwen3-embedding:4b-q4_K_M` y un perfil de endpoint
+explícito. `/api/embed` usa `input` string o array y batch nativo; el proxy
+externo documentado publica `/api/embeddings`, que acepta `prompt` individual y
+se procesa secuencialmente a nivel de aplicación. `truncate=false` y
+`keep_alive` acotado/omitido se mantienen donde el endpoint los soporte.
 
 **Evidencia**:
 
-- La [ficha oficial de Ollama](https://ollama.com/library/qwen3-embedding%3A0.6b)
-  publica el tag, tamaño aproximado 639 MB, 596M parámetros y Q8_0.
+- El modelo instalado y probado en Ollama es `qwen3-embedding:4b-q4_K_M`
+  (aproximadamente 2.5 GB).
 - La [API oficial de embeddings](https://docs.ollama.com/api/embed) define
   `POST /api/embed`, batches en `input`, `truncate`, `dimensions`, `keep_alive` y
   respuesta `embeddings: number[][]`.
-- El [repositorio oficial Qwen3-Embedding](https://github.com/QwenLM/Qwen3-Embedding)
-  declara para 0.6B contexto 32K, 1024 dimensiones nativas, capacidad
-  multilingüe e instruction-aware.
+- La respuesta real del perfil externo `/api/embeddings` para el tag 4B
+  contiene exactamente 2560 valores por vector.
 
 **Rationale**: es el contrato actual documentado y evita reutilizar el adaptador
 generativo. `truncate=false` impide pérdida silenciosa de contenido.
 
-**Alternativas**: `/api/embeddings` está superseded; OpenAI-compatible agrega una
-capa innecesaria; un modelo diferente rompe el alcance.
+**Alternativas**: un fallback implícito entre endpoints ocultaría cambios del
+proxy; OpenAI-compatible agrega una capa innecesaria; un modelo diferente rompe
+el alcance. El endpoint se fija mediante `OLLAMA_EMBEDDING_ENDPOINT` y cada
+perfil requiere evidencia G1 propia.
 
 ### Hallazgos y límites
 
-- **Dimensión contractual**: 1024. Una ejecución empírica en el servidor Ollama
-  confirmó dos vectores uniformes de 1024 valores, no vacíos y sin NaN o
-  infinitos observados. No existe una reducción dimensional en alcance.
+- **Dimensión histórica 0.6B**: 1024. Esta medición queda superseded por el
+  contrato vigente 4B/2560 documentado más abajo.
+- No existe una reducción dimensional en alcance.
 - **Batch**: soportado contractualmente mediante array de textos; el límite real
   se fija por `OLLAMA_EMBEDDING_BATCH_SIZE` y `CORPUS_MAX_FILE_SIZE_BYTES` tras
   benchmark.
@@ -51,16 +55,18 @@ pytest, por ejemplo `corpus probe-embedding --output json`.
 Debe:
 
 1. Consultar `/api/version` y detalles del modelo/tag/digest sin imprimir URL ni token.
-2. Enviar dos textos sintéticos no sensibles como batch sin `dimensions`.
+2. Enviar dos textos sintéticos no sensibles como batch nativo o, para el perfil
+   legacy, como dos prompts secuenciales.
 3. Validar dos vectores, igualdad de longitud, finitud y estabilidad entre dos ejecuciones.
-4. Confirmar documento, query y batch con exactamente 1024 valores.
+4. Confirmar documento, query y batch con exactamente 2560 valores.
 5. Confirmar estabilidad y compatibilidad cruzada.
 6. Emitir JSON sanitizado: versión, tag/digest, native_dimensions,
    requested_dimensions, vector_count, latencia, soporte y timestamp.
 7. Fallar cerrado si hay mismatch o campo desconocido.
 
-**Decisión contractual**: fijar `OLLAMA_EMBEDDING_MODEL=qwen3-embedding:0.6b`,
-`EMBEDDING_DIMENSIONS=1024` y `vector(1024)`. La dimensión ya no está pendiente.
+**Decisión contractual vigente**: fijar
+`OLLAMA_EMBEDDING_MODEL=qwen3-embedding:4b-q4_K_M`,
+`EMBEDDING_DIMENSIONS=2560` y `halfvec(2560)`. La dimensión ya no está pendiente.
 G1-A está cerrado y autoriza implementación, migración y tests fake. G1-B no reabre
 el contrato ni bloquea esos trabajos; solo bloquea aceptación operativa remota,
 cierre externo completo y smoke real desde Docker/local.
@@ -75,8 +81,17 @@ Resultado: `vector_count=2`, dimensión uniforme 1024, vectores no vacíos y sin
 NaN o infinitos observados. No se conservaron vectores, token, autorización,
 rutas internas ni contenido real.
 
-**Conclusión**: el modelo y la dimensión contractual quedan confirmados. Esta
+**Conclusión histórica**: el probe local del modelo 0.6B confirmó 1024, pero
+esa configuración quedó superseded por la migración 006 al modelo 4B/2560. Esta
 prueba no valida por sí sola la ruta externa utilizada por la aplicación.
+
+### Evidencia vigente — qwen3-embedding:4b-q4_K_M
+
+El probe ejecutado desde Docker/local contra `POST /ollama/api/embeddings`
+validó HTTPS/Bearer, `/api/version`, `/api/show`, dos vectores finitos y
+compatibilidad documento/query. La respuesta fue `status=passed`,
+`dimensions=2560`, `vector_count=2`, `query_vector_count=1` y estabilidad
+reproducible. No se conservaron token ni vectores completos.
 
 ### Ejecución empírica superseded — modelo 8B — 2026-08-04
 
@@ -85,7 +100,7 @@ textos sintéticos. La evidencia sanitizada se conserva en
 [g1-result-2026-08-04.json](evidence/g1-result-2026-08-04.json).
 
 Esta ejecución corresponde a `qwen3-embedding:8b-q8_0` y no aporta evidencia
-para cerrar G1 del nuevo modelo 0.6B. Se conserva únicamente como historial.
+para cerrar G1 del nuevo modelo 4B. Se conserva únicamente como historial.
 
 Resultados históricos alcanzados:
 
@@ -106,25 +121,29 @@ Por lo tanto no se ejecutaron las pruebas dependientes de embeddings: dimensión
 nativa, 1024, estabilidad, documento/query, batch, errores ni keep-alive. No es
 válido inferir esos resultados a partir de la ficha documental.
 
-**Decisión vigente**: la evidencia del modelo 8B permanece superseded. Para 0.6B,
+**Decisión vigente**: la evidencia del modelo 8B permanece superseded. Para 4B,
 modelo y dimensión ya están fijados; solo queda abierto el subgate externo.
 
-**Subgate G1-B de conectividad pendiente**: el probe debe ejecutarse desde el entorno local de
-005 —preferentemente desde su contenedor Docker— usando `OLLAMA_BASE_URL` y
+**Subgate G1-B de conectividad**: el probe se ejecutó desde el entorno local de
+005 usando `OLLAMA_BASE_URL` y
 `Authorization: Bearer`, y atravesar la ruta real aplicación local → HTTPS →
 Tailscale Funnel/Nginx → Ollama remoto → modelo. Debe verificar desde ese origen
-`/api/version`, `/api/show`, `/api/embed`, autenticación, dimensión nativa,
-`dimensions=1024`, batch, estabilidad, latencia y compatibilidad documento/query.
+`/api/version`, `/api/show`, el endpoint configurado, autenticación, dimensión
+nativa, estabilidad, latencia y compatibilidad documento/query. Para el perfil
+legacy se verifica además `transport_batch_supported=false` y el modo
+`sequential`; no se asume que el proxy exponga `/api/embed`.
 
-**Acción pendiente**: corregir el enrutamiento externo de `/api/embed` y
-repetir el probe desde Docker/local. Solo si existe un fallo TLS se permite un
-probe auxiliar en el servidor contra `http://127.0.0.1:11434`; ese resultado
-sirve para aislar Ollama del proxy, pero no cierra G1 porque no valida la ruta de
-producción de la aplicación. No desactivar verificación TLS.
+**Resultado**: el endpoint externo documentado `/api/embeddings` respondió 200
+desde Docker/local con Bearer, 2560 dimensiones, dos documentos, una query,
+estabilidad y finitud. El perfil nativo `/api/embed` continúa disponible solo
+cuando el despliegue lo expone explícitamente. No existe fallback implícito.
+
+G1-B queda cerrado para ese perfil. Un cambio a `/api/embed` o a otro proxy
+requiere repetir la evidencia desde Docker/local.
 
 ## R3 — pgvector y estrategia de índice
 
-**Decisión**: `vector(1024)`, operador coseno `<=>`, exact search inicial y B-tree
+**Decisión**: `halfvec(2560)`, operador coseno `<=>`, exact search inicial y B-tree
 para filtros. `similarity_score = clamp(1 - distance, 0, 1)`.
 
 **Evidencia**: la [documentación oficial de pgvector](https://github.com/pgvector/pgvector)
@@ -132,8 +151,8 @@ indica exact search por defecto con recall perfecto, HNSW/IVFFlat como aproximad
 `<=>` para coseno, límite general de 16.000 dimensiones para `vector`, costo de
 `4 * dimensions + 8` bytes y límite HNSW de 2.000 dimensiones para `vector`.
 
-**Implicación 1024**: puede almacenarse como `vector(1024)` y es compatible con
-HNSW `vector` por estar debajo del límite de 2000 dimensiones. Cada vector ocupa
+**Implicación 2560**: puede almacenarse como `halfvec(2560)` y es compatible con
+HNSW solo se habilitará tras G2 y evidencia de volumen/calidad. Cada vector ocupa
 al menos 4.104 bytes sin contar fila/índices. Exact search permanece como baseline.
 
 **Alternativas**:
@@ -147,7 +166,7 @@ al menos 4.104 bytes sin contar fila/índices. Exact search permanece como basel
 `EXPLAIN (ANALYZE, BUFFERS)` en benchmark y comparación ANN contra exact.
 
 **Integración Python**: usar la dependencia oficial `pgvector` y su tipo SQLAlchemy
-`Vector(1024)`, fijados reproduciblemente en `pyproject.toml` y lockfile. No usar
+`HALFVEC(2560)`, fijados reproduciblemente en `pyproject.toml` y lockfile. No usar
 SQL vectorial manual. La extensión PostgreSQL existente sigue siendo la autoridad
 de almacenamiento; la librería aporta mapping, serialización y validación ORM.
 
@@ -264,10 +283,10 @@ descargar bases de vulnerabilidades durante tests ordinarios.
 ## Conclusión
 
 No quedan incógnitas contractuales para reanalizar. La investigación fija el modelo
-0.6B, 1024 dimensiones, `pgvector` Python, revisión humana, evaluación constitucional,
-coordinación local y auditoría fail-closed. G1-B continúa como aceptación operativa
-externa pendiente, sin volver incierto el contrato vectorial. Estado actual:
-`IMPLEMENTATION_EXTERNAL_GATE_PENDING`.
+4B, 2560 dimensiones, `pgvector` Python, revisión humana, evaluación constitucional,
+coordinación local y auditoría fail-closed. G1-B está validado para el perfil
+externo `/api/embeddings`, sin volver incierto el contrato vectorial. Estado actual:
+`IMPLEMENTATION_EXTERNAL_GATE_CLOSED`.
 
 ## R12 – Evidencia de fases 5–18
 
@@ -283,11 +302,12 @@ exacta filtrada, health, observabilidad y evaluación fake.
 
 El probe sanitizado se ejecutÃ³ desde el entorno local contra la URL HTTPS
 configurada, usando Bearer sin imprimir el token ni vectores. `/api/version` y
-`/api/show` respondieron 200, pero `/api/embed` respondiÃ³ 404
-(`G1_EMBED_FAILED`). La dimensiÃ³n contractual sigue fijada en 1024, pero G1-B
-permanece `BLOCKED_EXTERNAL` hasta que la ruta Funnel/Nginx exponga el endpoint
-contractual y se realice el retest desde Docker/local. No se acepta localhost,
-mock ni fake para cerrar este gate.
+`/api/show` y `/api/embeddings` respondieron 200; `/api/embed` no estÃ¡ expuesto
+(`G1_EMBED_FAILED`). La dimensiÃ³n contractual sigue fijada en 2560, pero G1-B
+permanece validado para el endpoint externo `/api/embeddings`; el proxy no
+expone `/api/embed` y no existe fallback implícito. La ejecución obtuvo 200, 2560 dimensiones, estabilidad y compatibilidad documento/query desde Docker/local.
+contractual para ese perfil. No se acepta localhost, mock ni fake para cerrar
+este gate; cambiar a `/api/embed` requiere repetir la evidencia.
 
 ## Dependency audit evidence
 

@@ -14,6 +14,7 @@ from legal_ai.adapters.database.engine import create_engine
 from legal_ai.adapters.database.pgvector_search import ExactVectorSearchRepository
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.domain.semantic_search import SearchFilters
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
 from tests.integration.test_005_migrations import _chunk_values, _document_values
 
 
@@ -27,13 +28,15 @@ async def test_exact_search_rejects_invalid_vector_filters_and_thresholds() -> N
     with pytest.raises(ValueError, match="EMBEDDING_VECTOR_INVALID"):
         await repository.search([0.0] * 3)
     with pytest.raises(ValueError, match="EMBEDDING_VECTOR_INVALID"):
-        await repository.search([float("nan")] * 1024)
+        await repository.search([float("nan")] * EMBEDDING_DIMENSIONS)
     with pytest.raises(ValueError, match="SEMANTIC_SEARCH_TOP_K_INVALID"):
-        await repository.search([0.0] * 1024, limit=0)
+        await repository.search([0.0] * EMBEDDING_DIMENSIONS, limit=0)
     with pytest.raises(ValueError, match="SEMANTIC_SEARCH_SCORE_INVALID"):
-        await repository.search([0.0] * 1024, minimum_score=2)
+        await repository.search([0.0] * EMBEDDING_DIMENSIONS, minimum_score=2)
     with pytest.raises(ValueError, match="INVALID_SEMANTIC_SEARCH_FILTERS"):
-        await repository.search([0.0] * 1024, filters={"token": "secret"})
+        await repository.search(
+            [0.0] * EMBEDDING_DIMENSIONS, filters={"token": "secret"}
+        )
     pending = SearchFilters(
         document_type="decreto",
         document_subtype="designacion_transitoria",
@@ -42,7 +45,7 @@ async def test_exact_search_rejects_invalid_vector_filters_and_thresholds() -> N
         reviewed_only=False,
     )
     with pytest.raises(ValueError, match="INVALID_SEMANTIC_SEARCH_FILTERS"):
-        await repository.search([0.0] * 1024, filters=pending)
+        await repository.search([0.0] * EMBEDDING_DIMENSIONS, filters=pending)
 
 
 @pytest.mark.integration
@@ -50,7 +53,7 @@ async def test_exact_search_filters_reviewed_and_returns_stable_score() -> None:
     document_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
     values = _document_values(document_id, active_generation=None)
-    vector = [0.0] * 1024
+    vector = [0.0] * EMBEDDING_DIMENSIONS
     vector[0] = 1.0
     chunk_values = _chunk_values(
         document_id,
@@ -71,8 +74,7 @@ async def test_exact_search_filters_reviewed_and_returns_stable_score() -> None:
                 CorpusChunkModel.__table__.insert().values(**chunk_values)
             )
             await connection.execute(
-                CorpusDocumentModel.__table__
-                .update()
+                CorpusDocumentModel.__table__.update()
                 .where(CorpusDocumentModel.id == document_id)
                 .values(
                     active_generation=1,
@@ -105,9 +107,9 @@ async def test_exact_search_filters_reviewed_and_returns_stable_score() -> None:
         try:
             async with engine.begin() as connection:
                 await connection.execute(
-                    CorpusDocumentModel.__table__
-                    .delete()
-                    .where(CorpusDocumentModel.id == document_id)
+                    CorpusDocumentModel.__table__.delete().where(
+                        CorpusDocumentModel.id == document_id
+                    )
                 )
         finally:
             await engine.dispose()
@@ -118,7 +120,7 @@ async def test_exact_search_language_filter_excludes_other_languages() -> None:
     document_ids = [uuid.uuid4(), uuid.uuid4()]
     chunk_ids = [uuid.uuid4(), uuid.uuid4()]
     languages = ["es", "pt"]
-    vector = [0.0] * 1024
+    vector = [0.0] * EMBEDDING_DIMENSIONS
     vector[0] = 1.0
     engine = create_engine()
     try:
@@ -149,8 +151,7 @@ async def test_exact_search_language_filter_excludes_other_languages() -> None:
                     )
                 )
                 await connection.execute(
-                    CorpusDocumentModel.__table__
-                    .update()
+                    CorpusDocumentModel.__table__.update()
                     .where(CorpusDocumentModel.id == document_id)
                     .values(
                         active_generation=1,
@@ -197,8 +198,8 @@ async def test_exact_search_language_filter_excludes_other_languages() -> None:
         async with engine.begin() as connection:
             for document_id in document_ids:
                 await connection.execute(
-                    CorpusDocumentModel.__table__
-                    .delete()
-                    .where(CorpusDocumentModel.id == document_id)
+                    CorpusDocumentModel.__table__.delete().where(
+                        CorpusDocumentModel.id == document_id
+                    )
                 )
         await engine.dispose()

@@ -26,9 +26,11 @@ class PythonDocxRenderer:
 
             document_data = snapshot.get("document")
             source_text = snapshot.get("source_text")
-            if not isinstance(document_data, dict) or not isinstance(
-                source_text, str
-            ) or not source_text.strip():
+            if (
+                not isinstance(document_data, dict)
+                or not isinstance(source_text, str)
+                or not source_text.strip()
+            ):
                 raise InvalidFinalizationError(details={"field": "document"})
             title = document_data.get("title")
             locale = document_data.get("locale")

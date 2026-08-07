@@ -13,25 +13,27 @@ No autoriza ejecutar una ingesta real sin revisar límites y Gate G1.
 
 ## 1. Gate G1
 
-La dimensión ya fue confirmada en el servidor: dos vectores válidos de 1024 para
-`qwen3-embedding:0.6b`. Ejecutar ahora desde Docker/local el probe end-to-end y
+La dimensión ya fue confirmada en el servidor: dos vectores válidos de 2560 para
+`qwen3-embedding:4b-q4_K_M`. Ejecutar desde Docker/local el probe end-to-end con el
+perfil configurado (`/api/embed` nativo o `/api/embeddings` legacy) y
 guardar su JSON sanitizado. Confirmar versión, tag/digest, Bearer, exactamente
-1024 valores, batch, finitud, estabilidad, latencia y documento/query.
+2560 valores, batch, finitud, estabilidad, latencia y documento/query.
 
-Resultado esperado: conectividad externa validada sin cambiar el contrato 1024.
+Resultado esperado: conectividad externa validada sin cambiar el contrato 2560.
 Si falla, mantener G1-B abierto y no aceptar la integración operativa; las tareas
-pueden diseñarse con `vector(1024)`.
+pueden diseñarse con `halfvec(2560)`.
 
-**Estado**: `IMPLEMENTATION_EXTERNAL_GATE_PENDING`. La evidencia
-del 8B queda superseded; la evidencia local del servidor 0.6B confirma 1024.
-Repetir desde Docker/local para cerrar G1-B. Consultar
+**Estado**: `IMPLEMENTATION_EXTERNAL_GATE_CLOSED`. La evidencia
+del perfil 0.6B/8B queda superseded; la evidencia vigente del servidor confirma
+4B/2560.
+El perfil externo `/api/embeddings` ya fue validado desde Docker/local con
+HTTPS/Bearer y respuestas 200. Consultar
 [research.md](research.md#g1-b--probe-externo-ejecutado) y la
-[evidencia](evidence/g1-result-2026-08-04.json). Corregir el route y repetir el
-probe preferentemente desde el contenedor Docker de 005. Un probe auxiliar en
-`127.0.0.1:11434` puede diagnosticar un fallo TLS/proxy, pero no cierra G1. No
-aceptar operativamente el proveedor remoto ni cerrar el smoke real mientras G1-B
-siga abierto. G1-A ya cerró modelo/dimensión: implementación, migración
-`vector(1024)` y tests fake pueden continuar antes de G1-B.
+[evidencia](evidence/g1-e2e-result.json). Un probe auxiliar en
+`127.0.0.1:11434` puede diagnosticar un fallo TLS/proxy, pero no sustituye la
+ruta externa. G1-B está cerrado para ese perfil; cambiar a `/api/embed` requiere
+repetir el probe. G1-A ya cerró modelo/dimensión: implementación, migración
+`halfvec(2560)` y tests fake pueden continuar antes de G1-B.
 
 ## 2. Migración
 

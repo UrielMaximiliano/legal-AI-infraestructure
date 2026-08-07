@@ -48,19 +48,20 @@ async def test_concurrent_review_has_one_cas_winner() -> None:
             approve("reviewer-a"), approve("reviewer-b"), return_exceptions=True
         )
         assert sum(not isinstance(result, Exception) for result in results) == 1
-        assert sum(
-            isinstance(result, ValueError)
-            and "CORPUS_REVIEW_VERSION_MISMATCH" in str(result)
-            for result in results
-        ) == 1
+        assert (
+            sum(
+                isinstance(result, ValueError)
+                and "CORPUS_REVIEW_VERSION_MISMATCH" in str(result)
+                for result in results
+            )
+            == 1
+        )
     finally:
         engine = create_engine()
         try:
             async with engine.begin() as connection:
                 await connection.execute(
-                    text(
-                        "DELETE FROM review_events WHERE resource_id = :resource_id"
-                    ),
+                    text("DELETE FROM review_events WHERE resource_id = :resource_id"),
                     {"resource_id": str(document_id)},
                 )
                 await connection.execute(

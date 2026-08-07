@@ -5,6 +5,8 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+
 
 class AppConfig(BaseSettings):
     """Configuración principal de la aplicación."""
@@ -83,6 +85,11 @@ class OllamaConfig(BaseSettings):
         gt=0,
         le=30,
     )
+    endpoint: str = Field(
+        default="/api/embed",
+        validation_alias=AliasChoices("OLLAMA_EMBEDDING_ENDPOINT"),
+        serialization_alias="OLLAMA_EMBEDDING_ENDPOINT",
+    )
 
     def model_post_init(self, __context: object) -> None:
         """Valida que base_url y api_token estén configurados."""
@@ -90,6 +97,8 @@ class OllamaConfig(BaseSettings):
             raise ValueError("OLLAMA_BASE_URL es obligatoria")
         if not self.api_token:
             raise ValueError("OLLAMA_EMBEDDING_TOKEN es obligatorio")
+        if self.endpoint not in {"/api/embed", "/api/embeddings"}:
+            raise ValueError("OLLAMA_EMBEDDING_ENDPOINT_INVALID")
 
 
 class EmbeddingConfig(BaseSettings):
@@ -97,15 +106,19 @@ class EmbeddingConfig(BaseSettings):
 
     model_config = {"extra": "ignore"}
 
-    model: str = Field(default="qwen3-embedding:0.6b", alias="OLLAMA_EMBEDDING_MODEL")
-    dimensions: int = Field(default=1024, alias="EMBEDDING_DIMENSIONS", gt=0)
+    model: str = Field(default=EMBEDDING_MODEL, alias="OLLAMA_EMBEDDING_MODEL")
+    dimensions: int = Field(
+        default=EMBEDDING_DIMENSIONS, alias="EMBEDDING_DIMENSIONS", gt=0
+    )
 
     @model_validator(mode="after")
     def validate_contract(self) -> "EmbeddingConfig":
-        if self.model != "qwen3-embedding:0.6b":
+        if self.model != EMBEDDING_MODEL:
             raise ValueError("OLLAMA_EMBEDDING_MODEL no coincide con el contrato 005")
-        if self.dimensions != 1024:
-            raise ValueError("EMBEDDING_DIMENSIONS debe ser 1024")
+        if self.dimensions != EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}"
+            )
         return self
 
 

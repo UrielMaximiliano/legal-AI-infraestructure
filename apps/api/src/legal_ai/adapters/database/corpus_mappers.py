@@ -14,6 +14,7 @@ from legal_ai.domain.corpus import (
     ProvenanceType,
     ReviewStatus,
 )
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 
 from .corpus_models import CorpusChunkModel, CorpusDocumentModel
 
@@ -107,12 +108,12 @@ def corpus_chunk_to_model(chunk: CorpusChunk) -> CorpusChunkModel:
         embedding_model=(
             chunk.embedding_model
             if chunk.embedding is None or chunk.embedding_model
-            else "qwen3-embedding:0.6b"
+            else EMBEDDING_MODEL
         ),
         embedding_dimensions=(
             chunk.embedding_dimensions
             if chunk.embedding is None or chunk.embedding_dimensions is not None
-            else 1024
+            else EMBEDDING_DIMENSIONS
         ),
         normalization_version=chunk.normalization_version,
         chunking_version=chunk.chunking_version,

@@ -95,9 +95,7 @@ def evaluate_cases(
         case.usefulness_score for case in values if case.usefulness_score is not None
     ]
     legal = [
-        case.legally_relevant
-        for case in values
-        if case.legally_relevant is not None
+        case.legally_relevant for case in values if case.legally_relevant is not None
     ]
     return RetrievalEvaluationReport(
         dataset_version=dataset_version,
@@ -123,9 +121,7 @@ def evaluate_cases(
             else 0.0
         ),
         mrr=(
-            mean(
-                reciprocal_rank(c.returned_ids, c.relevant_ids) for c in values
-            )
+            mean(reciprocal_rank(c.returned_ids, c.relevant_ids) for c in values)
             if values
             else 0.0
         ),

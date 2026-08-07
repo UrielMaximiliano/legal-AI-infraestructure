@@ -11,8 +11,8 @@ def test_corpus_events_are_allowlisted_and_redacted() -> None:
     payload = sanitize_event_fields(
         {
             "request_id": "request-1",
-            "model": "qwen3-embedding:0.6b",
-            "dimensions": 1024,
+            "model": "qwen3-embedding:4b-q4_K_M",
+            "dimensions": 2560,
             "raw_content": "secret body",
             "token": "secret",
             "query": "private query",
@@ -20,8 +20,8 @@ def test_corpus_events_are_allowlisted_and_redacted() -> None:
     )
     assert payload == {
         "request_id": "request-1",
-        "model": "qwen3-embedding:0.6b",
-        "dimensions": 1024,
+        "model": "qwen3-embedding:4b-q4_K_M",
+        "dimensions": 2560,
     }
     assert "raw_content" not in CorpusEvent("embedding", payload).safe_dict()
 

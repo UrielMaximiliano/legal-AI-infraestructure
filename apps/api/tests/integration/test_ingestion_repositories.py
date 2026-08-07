@@ -42,9 +42,12 @@ async def test_runs_failures_and_batches_round_trip() -> None:
         f"repo-run-{uuid.uuid4().hex}",
         IngestionRunType.INGEST,
         source_identifier="fixture/corpus",
-        configuration_snapshot={"model": "qwen3-embedding:0.6b", "dimensions": 1024},
+        configuration_snapshot={
+            "model": "qwen3-embedding:4b-q4_K_M",
+            "dimensions": 2560,
+        },
         configuration_hash=configuration_hash_for_snapshot(
-            {"model": "qwen3-embedding:0.6b", "dimensions": 1024}
+            {"model": "qwen3-embedding:4b-q4_K_M", "dimensions": 2560}
         ),
         counts={
             "discovered_count": 1,
@@ -182,8 +185,8 @@ async def test_minimized_search_audit_round_trip() -> None:
         },
         top_k=3,
         minimum_score=None,
-        embedding_model="qwen3-embedding:0.6b",
-        embedding_dimensions=1024,
+        embedding_model="qwen3-embedding:4b-q4_K_M",
+        embedding_dimensions=2560,
         result_count=1,
         duration_ms=12,
         status=SemanticSearchStatus.SUCCEEDED,

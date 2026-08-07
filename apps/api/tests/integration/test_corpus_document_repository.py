@@ -202,9 +202,9 @@ async def test_upsert_changed_content_preserves_active_generation() -> None:
                     generation=7,
                     section_index=0,
                     paragraph_index=0,
-                    embedding=tuple([0.0] * 1024),
-                    embedding_model="qwen3-embedding:0.6b",
-                    embedding_dimensions=1024,
+                    embedding=tuple([0.0] * 2560),
+                    embedding_model="qwen3-embedding:4b-q4_K_M",
+                    embedding_dimensions=2560,
                 )
             )
             await uow.corpus_chunks.activate_generation(document_id, 7)

@@ -301,9 +301,7 @@ async def test_retry_active_and_payload_conflict_are_rejected() -> None:
     retry.export.status = ExportStatus.FAILED
     retry.attempt.status = ExportAttemptStatus.FAILED
     with pytest.raises(IdempotencyConflictError):
-        await service.retry_failed(
-            initial.export.id, "Other", "retry-key-000002", "r4"
-        )
+        await service.retry_failed(initial.export.id, "Other", "retry-key-000002", "r4")
 
 
 @pytest.mark.asyncio
@@ -349,9 +347,7 @@ async def test_regeneration_uses_snapshot_and_parent_without_source_file() -> No
     )
     await uow.document_exports.create(source)
     service = ExportService(uow)
-    result = await service.regenerate(
-        source.id, 1, "Editor", "regen-key-000001", "r1"
-    )
+    result = await service.regenerate(source.id, 1, "Editor", "regen-key-000001", "r1")
     assert result.status_code == 202
     assert result.export.parent_export_id == source.id
     assert result.export.export_version == 2
@@ -362,9 +358,7 @@ async def test_regeneration_uses_snapshot_and_parent_without_source_file() -> No
     result.attempt.status = ExportAttemptStatus.FAILED
 
     with pytest.raises(ExportVersionMismatchError):
-        await service.regenerate(
-            source.id, 1, "Editor", "regen-key-000002", "r2"
-        )
+        await service.regenerate(source.id, 1, "Editor", "regen-key-000002", "r2")
 
 
 @pytest.mark.asyncio
@@ -391,19 +385,13 @@ async def test_regeneration_replay_conflict_and_invalid_source() -> None:
         await service.regenerate(source.id, 1, "Editor", "regen-key-000003", "r1")
 
     source.status = ExportStatus.GENERATED
-    result = await service.regenerate(
-        source.id, 1, "Editor", "regen-key-000003", "r2"
-    )
+    result = await service.regenerate(source.id, 1, "Editor", "regen-key-000003", "r2")
     result.export.status = ExportStatus.GENERATED
     result.attempt.status = ExportAttemptStatus.SUCCEEDED
-    replay = await service.regenerate(
-        source.id, 1, "Editor", "regen-key-000003", "r3"
-    )
+    replay = await service.regenerate(source.id, 1, "Editor", "regen-key-000003", "r3")
     assert replay.status_code == 200
     with pytest.raises(IdempotencyConflictError):
-        await service.regenerate(
-            source.id, 1, "Other", "regen-key-000003", "r4"
-        )
+        await service.regenerate(source.id, 1, "Other", "regen-key-000003", "r4")
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 
-EMBEDDING_DIMENSIONS = 1024
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
+
 MAX_TOP_K = 50
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_REVIEW_STATUSES = {"PENDING_REVIEW", "REVIEWED"}

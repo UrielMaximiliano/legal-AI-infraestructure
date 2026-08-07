@@ -25,6 +25,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from legal_ai.domain.ingestion import EmbeddingBatchStatus, IngestionRunStatus
+from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS
 
 from .models import Base
 
@@ -121,7 +122,8 @@ class EmbeddingBatchModel(Base):
             name="ck_embedding_batches_counts",
         ),
         CheckConstraint(
-            "embedding_dimensions = 1024", name="ck_embedding_batches_dimensions"
+            f"embedding_dimensions = {EMBEDDING_DIMENSIONS}",
+            name="ck_embedding_batches_dimensions",
         ),
         UniqueConstraint(
             "ingestion_run_id",
