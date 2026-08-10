@@ -14,3 +14,11 @@ El perfil nativo `/api/embed` acepta batches. El proxy externo documentado usa
 `OLLAMA_EMBEDDING_ENDPOINT` y no existe fallback implícito. El probe validado
 desde Docker/local obtuvo HTTP 200, 2560 dimensiones, estabilidad y
 compatibilidad documento/query sin registrar token ni vectores.
+
+Para convivencia en GPU con `qwen3.6:35b`, la API fija
+`OLLAMA_EMBEDDING_CONTEXT_LENGTH=2048` y envía
+`options.num_ctx=2048` en cada llamada nativa a `/api/embed`. Esto desacopla el
+contexto del embedding del `OLLAMA_CONTEXT_LENGTH=32768` global usado por el
+modelo generativo y evita que el embedding reserve VRAM innecesaria. Cambiar
+este valor requiere un benchmark explícito de calidad, latencia y residencia;
+no existe ajuste automático ni fallback silencioso.

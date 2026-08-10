@@ -24,6 +24,7 @@ def _service() -> SemanticSearchService:
         dimensions=settings.embedding.dimensions,
         timeout_seconds=settings.ollama.timeout_seconds,
         endpoint=settings.ollama.endpoint,
+        context_length=settings.ollama.embedding_context_length,
     )
     return SemanticSearchService(
         uow_factory=UnitOfWork,

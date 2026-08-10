@@ -148,6 +148,7 @@ async def _run_ingest(args: argparse.Namespace) -> int:
                     dimensions=configuration.dimensions,
                     timeout_seconds=limits.embedding_timeout_seconds,
                     endpoint=ollama.endpoint,
+                    context_length=ollama.embedding_context_length,
                 )
                 coordinator = InferenceCoordinator(
                     max_queue_size=limits.max_queue_size,

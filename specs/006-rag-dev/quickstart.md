@@ -21,6 +21,7 @@ Copiar `.env.example` a `.env` y completar secretos localmente. Variables espera
 
 ```dotenv
 OLLAMA_EMBEDDING_MODEL=qwen3-embedding:4b-q4_K_M
+OLLAMA_EMBEDDING_CONTEXT_LENGTH=2048
 EMBEDDING_DIMENSIONS=2560
 OLLAMA_GENERATION_MODEL=qwen3.6:35b
 OLLAMA_GENERATION_ENDPOINT=/api/chat

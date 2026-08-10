@@ -88,6 +88,26 @@ class TestOllamaConfig:
                 OLLAMA_EMBEDDING_ENDPOINT="/api/unknown",
             )
 
+    def test_embedding_context_length_profile(self) -> None:
+        from pydantic import ValidationError
+
+        from legal_ai.config import OllamaConfig
+
+        config = OllamaConfig(
+            OLLAMA_EMBEDDING_BASE_URL="https://ollama.example",
+            OLLAMA_EMBEDDING_TOKEN="embedding-token",
+            OLLAMA_EMBEDDING_CONTEXT_LENGTH=2048,
+        )
+        assert config.embedding_context_length == 2048
+
+        for invalid in (0, 32769):
+            with pytest.raises(ValidationError):
+                OllamaConfig(
+                    OLLAMA_EMBEDDING_BASE_URL="https://ollama.example",
+                    OLLAMA_EMBEDDING_TOKEN="embedding-token",
+                    OLLAMA_EMBEDDING_CONTEXT_LENGTH=invalid,
+                )
+
 
 class TestPostgreSQLConfig:
     """Pruebas para PostgreSQLConfig."""

@@ -90,6 +90,13 @@ class OllamaConfig(BaseSettings):
         validation_alias=AliasChoices("OLLAMA_EMBEDDING_ENDPOINT"),
         serialization_alias="OLLAMA_EMBEDDING_ENDPOINT",
     )
+    embedding_context_length: int = Field(
+        default=2048,
+        validation_alias=AliasChoices("OLLAMA_EMBEDDING_CONTEXT_LENGTH"),
+        serialization_alias="OLLAMA_EMBEDDING_CONTEXT_LENGTH",
+        gt=0,
+        le=32768,
+    )
 
     def model_post_init(self, __context: object) -> None:
         """Valida que base_url y api_token estén configurados."""
