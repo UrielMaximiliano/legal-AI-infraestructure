@@ -69,6 +69,7 @@ class SemanticSearchCandidate(Mapping[str, object]):
     title: str | None = None
     publication_date: str | None = None
     source_url: str | None = None
+    content_hash: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
     @property

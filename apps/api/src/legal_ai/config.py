@@ -116,9 +116,7 @@ class EmbeddingConfig(BaseSettings):
         if self.model != EMBEDDING_MODEL:
             raise ValueError("OLLAMA_EMBEDDING_MODEL no coincide con el contrato 005")
         if self.dimensions != EMBEDDING_DIMENSIONS:
-            raise ValueError(
-                f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}"
-            )
+            raise ValueError(f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}")
         return self
 
 
@@ -208,6 +206,72 @@ class SemanticSearchConfig(BaseSettings):
     )
 
 
+class RagConfig(BaseSettings):
+    """Límites y contratos del pipeline RAG jurídico."""
+
+    model_config = {"extra": "ignore"}
+
+    generation_base_url: str = Field(
+        default="http://host.docker.internal:11434",
+        validation_alias=AliasChoices("OLLAMA_GENERATION_BASE_URL", "OLLAMA_BASE_URL"),
+    )
+    generation_endpoint: str = Field(
+        default="/api/chat", alias="OLLAMA_GENERATION_ENDPOINT"
+    )
+    generation_model: str = Field(
+        default="qwen3.6:35b", alias="OLLAMA_GENERATION_MODEL"
+    )
+    generation_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("OLLAMA_GENERATION_TOKEN", "OLLAMA_API_TOKEN"),
+    )
+    generation_timeout_seconds: int = Field(
+        default=300, alias="OLLAMA_GENERATION_TIMEOUT_SECONDS", gt=0, le=600
+    )
+    generation_max_retries: int = Field(
+        default=1, alias="OLLAMA_GENERATION_MAX_RETRIES", ge=0, le=2
+    )
+    prompt_version: str = Field(default="rag-decree-v1", alias="RAG_PROMPT_VERSION")
+    schema_version: int = Field(default=1, alias="RAG_SCHEMA_VERSION", gt=0)
+    top_k: int = Field(default=8, alias="RAG_TOP_K", ge=3, le=20)
+    candidate_pool_size: int = Field(
+        default=24, alias="RAG_CANDIDATE_POOL_SIZE", ge=3, le=50
+    )
+    minimum_score: float = Field(default=0.0, alias="RAG_MINIMUM_SCORE", ge=0.0, le=1.0)
+    max_context_bytes: int = Field(default=65_536, alias="RAG_MAX_CONTEXT_BYTES", gt=0)
+    max_context_tokens_estimate: int = Field(
+        default=16_384, alias="RAG_MAX_CONTEXT_TOKENS_ESTIMATE", gt=0
+    )
+    max_chunks_per_document: int = Field(
+        default=2, alias="RAG_MAX_CHUNKS_PER_DOCUMENT", ge=1, le=10
+    )
+    max_chunks_per_section: int = Field(
+        default=1, alias="RAG_MAX_CHUNKS_PER_SECTION", ge=1, le=5
+    )
+    schema_repair_attempts: int = Field(
+        default=1, alias="RAG_SCHEMA_REPAIR_ATTEMPTS", ge=0, le=1
+    )
+    require_reviewed: bool = Field(default=True, alias="RAG_REQUIRE_REVIEWED")
+    required_evaluation_split: str = Field(
+        default="INDEX_90", alias="RAG_REQUIRED_EVALUATION_SPLIT"
+    )
+    max_request_bytes: int = Field(
+        default=256 * 1024, alias="RAG_MAX_REQUEST_BYTES", gt=0, le=2 * 1024 * 1024
+    )
+
+    @model_validator(mode="after")
+    def validate_rag_contract(self) -> "RagConfig":
+        if self.candidate_pool_size < self.top_k:
+            raise ValueError("RAG_CANDIDATE_POOL_SIZE debe cubrir RAG_TOP_K")
+        if self.generation_endpoint != "/api/chat":
+            raise ValueError("OLLAMA_GENERATION_ENDPOINT_INVALID")
+        if self.generation_model != "qwen3.6:35b":
+            raise ValueError("OLLAMA_GENERATION_MODEL_INVALID")
+        if self.required_evaluation_split != "INDEX_90":
+            raise ValueError("RAG_REQUIRED_EVALUATION_SPLIT_INVALID")
+        return self
+
+
 class ExportConfig(BaseSettings):
     """Límites y configuración operativa del incremento 004."""
 
@@ -285,6 +349,7 @@ class Settings:
         self.embedding = EmbeddingConfig()
         self.corpus = CorpusConfig()
         self.semantic_search = SemanticSearchConfig()
+        self.rag = RagConfig()
         self._ollama: OllamaConfig | None = None
 
     @property

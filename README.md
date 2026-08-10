@@ -115,6 +115,26 @@ completa de DOCX/PDF.
 Para el entorno operativo y el smoke completo, consultar
 [specs/004-document-review-and-export/quickstart.md](specs/004-document-review-and-export/quickstart.md).
 
+## Incremento 006: RAG jurídico
+
+El endpoint `POST /api/v1/rag/drafts/generate` recupera únicamente chunks activos
+de documentos `REVIEWED` en `INDEX_90`, genera JSON estricto con `qwen3.6:35b`
+mediante `/api/chat` y crea un Draft asistido pendiente de revisión humana.
+Las fuentes se devuelven con citas `SRC-NNN`; no se exponen prompts, consultas,
+vectores, documentos completos ni credenciales.
+
+El benchmark reservado se ejecuta sin copiar los PDF al repositorio:
+
+```bash
+corpus rag-evaluate /ruta/externa/manifest.json
+corpus rag-evaluate /ruta/externa/manifest.json --execute --provider fake
+corpus rag-evaluate /ruta/externa/manifest.json --execute --provider ollama --limit 10
+```
+
+La evaluación real y el smoke contra Ollama son opt-in. `HOLDOUT_10` permanece
+fuera de PostgreSQL y del índice operativo; la revisión humana sigue siendo
+obligatoria antes de aprobar, finalizar o exportar un borrador.
+
 ## Incremento 005: corpus y búsqueda semántica
 
 ```bash

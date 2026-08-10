@@ -17,8 +17,10 @@ from legal_ai.api.exceptions import (
     service_error_handler,
     validation_error_handler,
 )
+from legal_ai.api.middleware import RagSecurityMiddleware
 from legal_ai.api.router import router
 from legal_ai.api.routes.generation import GenerationAttemptNotFoundError
+from legal_ai.api.routes.rag import close_rag_coordinator
 from legal_ai.application.case_file_service import (
     CaseFileArchivedError,
     CaseFileEmployeeInactiveError,
@@ -89,7 +91,10 @@ from legal_ai.schemas.errors import ErrorResponse, ValidationErrorDetail
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Gestión del lifespan de la aplicación."""
     setup_logging(settings.logging.level)
-    yield
+    try:
+        yield
+    finally:
+        await close_rag_coordinator()
 
 
 app = FastAPI(
@@ -98,6 +103,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# RequestContextMiddleware remains outermost so rejected requests still receive a
+# sanitized correlation id. The security middleware never inspects Authorization.
+app.add_middleware(RagSecurityMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.include_router(router)
 

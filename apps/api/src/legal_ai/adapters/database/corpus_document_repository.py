@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +22,7 @@ from legal_ai.domain.corpus import (
 )
 
 from .corpus_mappers import corpus_document_from_model, corpus_document_to_model
-from .corpus_models import CorpusDocumentModel
+from .corpus_models import CorpusChunkModel, CorpusDocumentModel
 
 
 class SQLAlchemyCorpusDocumentRepository:
@@ -109,6 +109,62 @@ class SQLAlchemyCorpusDocumentRepository:
         result = await self._session.execute(statement)
         return tuple(corpus_document_from_model(model) for model in result.scalars())
 
+    async def count_eligible_reviewed_documents(
+        self,
+        *,
+        evaluation_split: str = "INDEX_90",
+        document_type: str = "decreto",
+        document_subtype: str = "designacion_transitoria",
+        jurisdiction: str = "nacion",
+    ) -> int:
+        """Count active documents allowed by the RAG retrieval policy."""
+
+        result = await self._session.scalar(
+            select(func.count())
+            .select_from(CorpusDocumentModel)
+            .where(
+                CorpusDocumentModel.document_type == document_type,
+                CorpusDocumentModel.document_subtype == document_subtype,
+                CorpusDocumentModel.jurisdiction == jurisdiction,
+                CorpusDocumentModel.review_status == ReviewStatus.REVIEWED.value,
+                CorpusDocumentModel.active_generation.is_not(None),
+                CorpusDocumentModel.metadata_json["evaluation_split"].as_string()
+                == evaluation_split,
+            )
+        )
+        return int(result or 0)
+
+    async def count_holdout_matches(
+        self, *, external_ids: Sequence[str], hashes: Sequence[str]
+    ) -> int:
+        """Count operational rows that would make a HOLDOUT manifest unsafe."""
+
+        predicates = [
+            CorpusDocumentModel.metadata_json["evaluation_split"].as_string()
+            == "HOLDOUT_10",
+        ]
+        if external_ids:
+            predicates.append(CorpusDocumentModel.external_id.in_(tuple(external_ids)))
+        if hashes:
+            predicates.extend(
+                (
+                    CorpusDocumentModel.raw_content_hash.in_(tuple(hashes)),
+                    CorpusDocumentModel.normalized_content_hash.in_(tuple(hashes)),
+                )
+            )
+        document_count = await self._session.scalar(
+            select(func.count()).select_from(CorpusDocumentModel).where(or_(*predicates))
+        )
+        chunk_count = await self._session.scalar(
+            select(func.count())
+            .select_from(CorpusChunkModel)
+            .where(
+                CorpusChunkModel.metadata_json["evaluation_split"].as_string()
+                == "HOLDOUT_10"
+            )
+        )
+        return int(document_count or 0) + int(chunk_count or 0)
+
     async def compare_and_swap_review(
         self,
         document_id: uuid.UUID,
@@ -170,6 +226,52 @@ class SQLAlchemyCorpusDocumentRepository:
             .where(CorpusDocumentModel.id == document_id)
             .values(active_generation=generation)
         )
+        await self._session.flush()
+
+    async def swap_generations(
+        self, document_ids: Sequence[uuid.UUID], generation: int
+    ) -> None:
+        ids = tuple(document_ids)
+        if generation <= 0:
+            raise ValueError("CORPUS_GENERATION_INVALID")
+        if not ids:
+            return
+        result = await self._session.execute(
+            update(CorpusDocumentModel)
+            .where(CorpusDocumentModel.id.in_(ids))
+            .values(active_generation=generation)
+        )
+        if getattr(result, "rowcount", 0) != len(ids):
+            raise CorpusDocumentNotFoundError("CORPUS_DOCUMENT_NOT_FOUND")
+        await self._session.flush()
+
+    async def update_processing_states(
+        self,
+        document_ids: Sequence[uuid.UUID],
+        *,
+        ingestion_status: str,
+        embedding_status: str,
+    ) -> None:
+        ids = tuple(document_ids)
+        try:
+            ingestion_value = CorpusIngestionStatus(ingestion_status)
+        except ValueError:
+            raise ValueError("CORPUS_INGESTION_STATUS_INVALID") from None
+        if embedding_status not in {"PENDING", "PROCESSING", "EMBEDDED", "FAILED"}:
+            raise ValueError("CORPUS_EMBEDDING_STATUS_INVALID")
+        if not ids:
+            return
+        result = await self._session.execute(
+            update(CorpusDocumentModel)
+            .where(CorpusDocumentModel.id.in_(ids))
+            .values(
+                ingestion_status=ingestion_value.value,
+                embedding_status=embedding_status,
+                updated_at=datetime.now(UTC),
+            )
+        )
+        if getattr(result, "rowcount", 0) != len(ids):
+            raise CorpusDocumentNotFoundError("CORPUS_DOCUMENT_NOT_FOUND")
         await self._session.flush()
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from .corpus_repositories import (
+    CorpusActivationRepository,
     CorpusChunkRepository,
     CorpusDocumentRepository,
     EmbeddingBatchRepository,
@@ -17,6 +18,7 @@ from .corpus_repositories import (
 
 
 class CorpusUnitOfWork(Protocol):
+    corpus_activation: CorpusActivationRepository
     corpus_documents: CorpusDocumentRepository
     corpus_chunks: CorpusChunkRepository
     ingestion: IngestionRepository

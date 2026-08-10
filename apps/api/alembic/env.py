@@ -19,6 +19,7 @@ if config.config_file_name is not None:
 from legal_ai.adapters.database import (
     corpus_models,
     ingestion_models,
+    rag_models,
     semantic_search_models,
 )
 from legal_ai.adapters.database.models import Base

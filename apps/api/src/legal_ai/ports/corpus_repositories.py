@@ -7,6 +7,8 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from legal_ai.domain.corpus import (
+    CorpusActivationDocument,
+    CorpusActivationSnapshot,
     CorpusChunk,
     CorpusDeduplicationRecord,
     CorpusDocument,
@@ -26,6 +28,18 @@ class CorpusDeduplicationLookupPort(Protocol):
         identities: Sequence[tuple[str, str]],
         normalized_content_hashes: Sequence[str],
     ) -> Sequence[CorpusDeduplicationRecord]: ...
+
+
+class CorpusActivationRepository(Protocol):
+    async def inspect(self, *, generation: int) -> CorpusActivationSnapshot: ...
+
+    async def lock_document(
+        self, document_id: uuid.UUID, *, generation: int
+    ) -> CorpusActivationDocument: ...
+
+    async def lock_documents(
+        self, document_ids: Sequence[uuid.UUID], *, generation: int
+    ) -> Sequence[CorpusActivationDocument]: ...
 
 
 class CorpusDocumentRepository(Protocol):
@@ -54,6 +68,22 @@ class CorpusDocumentRepository(Protocol):
         ingestion_status: str,
         embedding_status: str,
     ) -> CorpusDocument: ...
+
+    async def swap_generation(
+        self, document_id: uuid.UUID, generation: int
+    ) -> None: ...
+
+    async def swap_generations(
+        self, document_ids: Sequence[uuid.UUID], generation: int
+    ) -> None: ...
+
+    async def update_processing_states(
+        self,
+        document_ids: Sequence[uuid.UUID],
+        *,
+        ingestion_status: str,
+        embedding_status: str,
+    ) -> None: ...
 
     async def list(
         self,
@@ -86,6 +116,10 @@ class CorpusChunkRepository(Protocol):
 
     async def activate_generation(
         self, document_id: uuid.UUID, generation: int
+    ) -> None: ...
+
+    async def activate_generations(
+        self, document_ids: Sequence[uuid.UUID], generation: int
     ) -> None: ...
 
 

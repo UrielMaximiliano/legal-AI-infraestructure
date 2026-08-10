@@ -28,12 +28,24 @@ class DependencyHealthSchema(BaseModel):
     )
 
 
+class RagGenerationReadiness(BaseModel):
+    """Sanitized readiness for the two contractual RAG models."""
+
+    status: str
+    generation_model: str
+    embedding_model: str
+    dimensions: int
+    eligible_reviewed_documents: int = 0
+    error_code: str | None = None
+
+
 class HealthReadyResponse(BaseModel):
     """Respuesta del endpoint /health/ready."""
 
     status: str = Field(description="Estado general: ready, degraded, not_ready")
     timestamp: str = Field(description="Fecha UTC en formato ISO 8601")
     request_id: str = Field(description="UUID v4 de correlación")
+    rag_generation: RagGenerationReadiness | None = None
 
 
 class HealthDependenciesResponse(BaseModel):

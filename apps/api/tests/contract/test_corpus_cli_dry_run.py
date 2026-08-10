@@ -34,3 +34,23 @@ def test_evaluate_and_probe_commands_are_explicit_opt_in() -> None:
     probe = parser.parse_args(["probe-embedding", "--timeout", "5"])
     assert evaluation.provider == "fake"
     assert probe.timeout == 5
+
+
+def test_activate_staged_index_is_dry_run_by_default_and_guarded() -> None:
+    parser = corpus_cli.build_parser()
+    dry_run = parser.parse_args(
+        ["activate-staged-index", "--expected-database", "isolated_test"]
+    )
+    execute = parser.parse_args(
+        [
+            "activate-staged-index",
+            "--expected-database",
+            "isolated_test",
+            "--execute",
+        ]
+    )
+
+    assert dry_run.execute is False
+    assert dry_run.generation == 1
+    assert dry_run.batch_size == 100
+    assert execute.execute is True

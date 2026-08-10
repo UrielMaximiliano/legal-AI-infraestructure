@@ -25,6 +25,7 @@ def _set_test_env() -> None:
     os.environ.setdefault("OLLAMA_BASE_URL", "http://test-host:11434")
     os.environ.setdefault("OLLAMA_API_TOKEN", "test-token-for-tests")
     os.environ.setdefault("POSTGRES_HOST", "localhost")
+    os.environ.setdefault("POSTGRES_PORT", "5432")
     os.environ.setdefault("POSTGRES_DB", "legal_ai")
     os.environ.setdefault("POSTGRES_USER", "legal_ai")
     os.environ.setdefault("POSTGRES_PASSWORD", "test-password")
@@ -32,6 +33,7 @@ def _set_test_env() -> None:
     from legal_ai.config import settings
 
     settings.postgres.host = os.environ["POSTGRES_HOST"]
+    settings.postgres.port = int(os.environ["POSTGRES_PORT"])
     settings.postgres.db = os.environ["POSTGRES_DB"]
     settings.postgres.user = os.environ["POSTGRES_USER"]
     settings.postgres.password = os.environ["POSTGRES_PASSWORD"]

@@ -1,4 +1,4 @@
-"""Controladores de los endpoints de health check."""
+"""Controllers for liveness, readiness and dependency health checks."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request, Response
 
 from legal_ai.adapters.database.engine import create_engine
 from legal_ai.adapters.database.health import PostgreSQLHealthAdapter
+from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.adapters.ollama.client import create_ollama_client
 from legal_ai.adapters.ollama.health import OllamaHealthAdapter
 from legal_ai.application.health_service import HealthService
@@ -17,15 +18,14 @@ from legal_ai.schemas.health import (
     HealthDependenciesResponse,
     HealthLiveResponse,
     HealthReadyResponse,
+    RagGenerationReadiness,
 )
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(tags=["health"])
 
 
 def _get_health_service() -> HealthService:
-    """Crea una instancia del servicio de health checks."""
     engine = create_engine()
     db_adapter = PostgreSQLHealthAdapter(engine)
     client = create_ollama_client()
@@ -37,9 +37,44 @@ def _get_health_service() -> HealthService:
     return HealthService(db_adapter, ollama_adapter)
 
 
+async def _rag_generation_readiness() -> RagGenerationReadiness:
+    """Report configuration and the effective reviewed INDEX_90 corpus."""
+
+    try:
+        ollama = settings.ollama
+        available = bool(ollama.base_url and ollama.api_token)
+    except (ValueError, RuntimeError):
+        available = False
+    eligible = 0
+    corpus_error: str | None = None
+    if available:
+        try:
+            async with UnitOfWork() as uow:
+                eligible = await uow.corpus_documents.count_eligible_reviewed_documents(
+                    evaluation_split=settings.rag.required_evaluation_split
+                )
+        except Exception:
+            logger.warning("RAG corpus readiness query failed", exc_info=True)
+            corpus_error = "RAG_CORPUS_UNAVAILABLE"
+    status = "unavailable"
+    error_code: str | None = "OLLAMA_CONFIGURATION_INVALID"
+    if available and corpus_error is None:
+        status = "ready" if eligible > 0 else "not_ready"
+        error_code = None if eligible > 0 else "RAG_NO_REVIEWED_INDEX_90_DOCUMENTS"
+    elif available:
+        error_code = corpus_error
+    return RagGenerationReadiness(
+        status=status,
+        generation_model=settings.rag.generation_model,
+        embedding_model=settings.embedding.model,
+        dimensions=settings.embedding.dimensions,
+        eligible_reviewed_documents=eligible,
+        error_code=error_code,
+    )
+
+
 @router.get("/health/live", response_model=HealthLiveResponse)
 async def health_live(request: Request) -> HealthLiveResponse:
-    """Liveness: indica que el proceso HTTP está activo."""
     return HealthLiveResponse(
         status="ok",
         service=settings.app.name,
@@ -50,7 +85,6 @@ async def health_live(request: Request) -> HealthLiveResponse:
 
 @router.get("/health/ready", response_model=HealthReadyResponse)
 async def health_ready(request: Request, response: Response) -> HealthReadyResponse:
-    """Readiness: indica si la aplicación está preparada."""
     service = _get_health_service()
     try:
         result = await service.check_all()
@@ -61,26 +95,23 @@ async def health_ready(request: Request, response: Response) -> HealthReadyRespo
             status=readiness,
             timestamp=service.now_utc(),
             request_id=request.state.request_id,
+            rag_generation=await _rag_generation_readiness(),
         )
     except Exception:
-        logger.exception("Error interno en health ready")
+        logger.exception("Internal health readiness failure")
         response.status_code = 500
         return HealthReadyResponse(
             status="not_ready",
             timestamp=service.now_utc(),
             request_id=request.state.request_id,
+            rag_generation=await _rag_generation_readiness(),
         )
-    finally:
-        pass
-
-        # El engine se cierra en el lifespan, no aquí
 
 
 @router.get("/health/dependencies", response_model=HealthDependenciesResponse)
 async def health_dependencies(
     request: Request, response: Response
 ) -> HealthDependenciesResponse:
-    """Diagnóstico: expone estado individual de cada dependencia."""
     service = _get_health_service()
     try:
         result = await service.check_all()
@@ -133,27 +164,18 @@ async def health_dependencies(
             },
         )
     except Exception:
-        logger.exception("Error interno en health dependencies")
+        logger.exception("Internal health dependencies failure")
         response.status_code = 500
         return HealthDependenciesResponse(
             status="error",
             timestamp=service.now_utc(),
             request_id=request.state.request_id,
             dependencies={
-                "postgres": DependencyHealthSchema(
+                name: DependencyHealthSchema(
                     status="unavailable",
                     error_code="INTERNAL_DIAGNOSTIC_ERROR",
-                    message="Error interno del diagnóstico",
-                ),
-                "pgvector": DependencyHealthSchema(
-                    status="unavailable",
-                    error_code="INTERNAL_DIAGNOSTIC_ERROR",
-                    message="Error interno del diagnóstico",
-                ),
-                "ollama": DependencyHealthSchema(
-                    status="unavailable",
-                    error_code="INTERNAL_DIAGNOSTIC_ERROR",
-                    message="Error interno del diagnóstico",
-                ),
+                    message="Internal diagnostic error",
+                )
+                for name in ("postgres", "pgvector", "ollama")
             },
         )
