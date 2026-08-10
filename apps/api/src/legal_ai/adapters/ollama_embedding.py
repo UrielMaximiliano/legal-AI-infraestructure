@@ -45,6 +45,7 @@ class OllamaEmbeddingAdapter:
         client: httpx.AsyncClient | None = None,
         max_retries: int = 2,
         endpoint: str = EMBEDDING_ENDPOINT_BATCH,
+        context_length: int = 2048,
     ) -> None:
         if dimensions != EMBEDDING_DIMENSIONS:
             raise ValueError(
@@ -52,6 +53,8 @@ class OllamaEmbeddingAdapter:
             )
         if not model or not api_token:
             raise ValueError("OLLAMA_EMBEDDING_CONFIGURATION_INVALID")
+        if context_length <= 0 or context_length > 32768:
+            raise ValueError("OLLAMA_EMBEDDING_CONTEXT_LENGTH_INVALID")
         self._validate_endpoint(base_url)
         self.base_url = base_url.rstrip("/")
         self.api_token = api_token
@@ -63,6 +66,7 @@ class OllamaEmbeddingAdapter:
         if endpoint not in ALLOWED_EMBEDDING_ENDPOINTS:
             raise ValueError("OLLAMA_EMBEDDING_ENDPOINT_INVALID")
         self.endpoint = endpoint
+        self.context_length = context_length
 
     @staticmethod
     def _validate_endpoint(base_url: str) -> None:
@@ -173,6 +177,7 @@ class OllamaEmbeddingAdapter:
                     "model": self.model,
                     "input": list(texts),
                     "dimensions": self.dimensions,
+                    "options": {"num_ctx": self.context_length},
                 },
             )
             return self._validate(body.get("embeddings"), len(texts))

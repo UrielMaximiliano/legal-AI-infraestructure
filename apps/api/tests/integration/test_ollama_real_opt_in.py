@@ -214,6 +214,7 @@ async def test_real_rag_http_smoke_is_idempotent_audited_and_review_only() -> No
             dimensions=settings.embedding.dimensions,
             timeout_seconds=settings.corpus.embedding_timeout_seconds,
             endpoint=settings.ollama.endpoint,
+            context_length=settings.ollama.embedding_context_length,
         ).embed_query(query.text)
         async with AsyncSession(engine, expire_on_commit=False) as session:
             await session.execute(

@@ -56,6 +56,7 @@ async def run_ollama(
         dimensions=settings.embedding.dimensions,
         timeout_seconds=ollama.timeout_seconds,
         endpoint=ollama.endpoint,
+        context_length=ollama.embedding_context_length,
     )
     service = SemanticSearchService(
         uow_factory=UnitOfWork,

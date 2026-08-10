@@ -22,6 +22,8 @@ async def test_request_bearer_batch_and_dimension() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer secret"
         assert request.url.path == "/api/embed"
+        payload = json.loads(request.content)
+        assert payload["options"] == {"num_ctx": 2048}
         return httpx.Response(200, json={"embeddings": [[0.0] * 2560, [1.0] * 2560]})
 
     adapter, client = make_adapter(handler)
@@ -30,6 +32,37 @@ async def test_request_bearer_batch_and_dimension() -> None:
         assert len(result) == 2 and len(result[0]) == 2560
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_native_endpoint_uses_configured_context_length() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["options"] == {"num_ctx": 4096}
+        return httpx.Response(200, json={"embeddings": [[0.0] * 2560]})
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url="https://ollama.test")
+    adapter = OllamaEmbeddingAdapter(
+        base_url="https://ollama.test",
+        api_token="secret",
+        context_length=4096,
+        client=client,
+    )
+    try:
+        assert len(await adapter.embed_query("synthetic")) == 2560
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.parametrize("context_length", [0, -1, 32769])
+def test_invalid_embedding_context_length_is_rejected(context_length: int) -> None:
+    with pytest.raises(ValueError, match="CONTEXT_LENGTH"):
+        OllamaEmbeddingAdapter(
+            base_url="https://ollama.test",
+            api_token="secret",
+            context_length=context_length,
+        )
 
 
 @pytest.mark.asyncio
@@ -42,6 +75,7 @@ async def test_legacy_endpoint_uses_sequential_prompts() -> None:
         assert b'"input"' not in payload
         assert b'"dimensions"' not in payload
         decoded = json.loads(payload)
+        assert "options" not in decoded
         prompts.append(decoded["prompt"])
         return httpx.Response(200, json={"embedding": [float(len(prompts))] * 2560})
 

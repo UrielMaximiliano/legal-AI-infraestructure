@@ -132,6 +132,7 @@ async def _embed(*, batch_size: int, max_chunks: int | None) -> None:
             float(settings.ollama.timeout_seconds),
         ),
         endpoint=settings.ollama.endpoint,
+        context_length=settings.ollama.embedding_context_length,
         max_retries=2,
     )
     processed = 0

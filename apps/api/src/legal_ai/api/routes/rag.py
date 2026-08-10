@@ -90,6 +90,7 @@ def _build_service() -> tuple[RagGenerationService, InferenceCoordinator]:
         dimensions=settings.embedding.dimensions,
         timeout_seconds=settings.corpus.embedding_timeout_seconds,
         endpoint=settings.ollama.endpoint,
+        context_length=settings.ollama.embedding_context_length,
     )
     retrieval = RagRetrievalService(
         embedding_provider=embedding,
