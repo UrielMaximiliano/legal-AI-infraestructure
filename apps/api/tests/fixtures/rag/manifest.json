@@ -1,0 +1,14 @@
+{
+  "dataset_version": "synthetic-holdout-fixture-v1",
+  "split": "HOLDOUT_10",
+  "source": "controlled-test-fixture",
+  "cases": [
+    {
+      "case_id": "HOLDOUT-TEST-0001",
+      "relative_path": "case-0001.txt",
+      "sha256": "e861da3974eed27e0b0d3f863fce171cc6388cc2b9a77478b3a92bd8b570ac2a",
+      "external_id": "opaque-holdout-test-0001",
+      "expected_external_ids": ["opaque-index-test-0001"]
+    }
+  ]
+}

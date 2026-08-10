@@ -102,5 +102,36 @@ class SQLAlchemyCorpusChunkRepository:
         if getattr(result, "rowcount", 0) == 0:
             raise ValueError("CORPUS_GENERATION_NOT_FOUND")
 
+    async def activate_generations(
+        self, document_ids: Sequence[uuid.UUID], generation: int
+    ) -> None:
+        """Publish a prevalidated batch in the caller's short transaction."""
+
+        ids = tuple(document_ids)
+        if generation <= 0:
+            raise ValueError("CORPUS_GENERATION_INVALID")
+        if not ids:
+            return
+        await self._session.execute(
+            update(CorpusChunkModel)
+            .where(
+                CorpusChunkModel.document_id.in_(ids),
+                CorpusChunkModel.state == "ACTIVE",
+                CorpusChunkModel.generation != generation,
+            )
+            .values(state="SUPERSEDED")
+        )
+        result = await self._session.execute(
+            update(CorpusChunkModel)
+            .where(
+                CorpusChunkModel.document_id.in_(ids),
+                CorpusChunkModel.generation == generation,
+                CorpusChunkModel.state == "STAGED",
+            )
+            .values(state="ACTIVE")
+        )
+        if getattr(result, "rowcount", 0) == 0:
+            raise ValueError("CORPUS_GENERATION_NOT_FOUND")
+
 
 CorpusChunkRepository = SQLAlchemyCorpusChunkRepository

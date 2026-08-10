@@ -10,6 +10,9 @@ from legal_ai.adapters.database.case_file_repository import (
 from legal_ai.adapters.database.case_status_history_repository import (
     SQLAlchemyCaseStatusHistoryRepository,
 )
+from legal_ai.adapters.database.corpus_activation_repository import (
+    SQLAlchemyCorpusActivationRepository,
+)
 from legal_ai.adapters.database.corpus_chunk_repository import (
     SQLAlchemyCorpusChunkRepository,
 )
@@ -42,6 +45,12 @@ from legal_ai.adapters.database.ingestion_repositories import (
     SQLAlchemyIngestionRunRepository,
 )
 from legal_ai.adapters.database.pgvector_search import ExactVectorSearchRepository
+from legal_ai.adapters.database.rag_repositories import (
+    SQLAlchemyRagEvaluationRepository,
+    SQLAlchemyRagGenerationRunRepository,
+    SQLAlchemyRagRetrievedSourceRepository,
+    SQLAlchemyRagStructuredDraftRepository,
+)
 from legal_ai.adapters.database.review_comment_repository import (
     SQLAlchemyReviewCommentRepository,
 )
@@ -85,6 +94,7 @@ class UnitOfWork:
         self._export_attempts: SQLAlchemyExportAttemptRepository | None = None
         self._corpus_documents: SQLAlchemyCorpusDocumentRepository | None = None
         self._corpus_chunks: SQLAlchemyCorpusChunkRepository | None = None
+        self._corpus_activation: SQLAlchemyCorpusActivationRepository | None = None
         self._ingestion_runs: SQLAlchemyIngestionRunRepository | None = None
         self._ingestion_failures: SQLAlchemyIngestionFailureRepository | None = None
         self._embedding_batches: SQLAlchemyEmbeddingBatchRepository | None = None
@@ -93,6 +103,12 @@ class UnitOfWork:
             SQLAlchemyHumanRetrievalEvaluationRepository | None
         ) = None
         self._vector_search: ExactVectorSearchRepository | None = None
+        self._rag_runs: SQLAlchemyRagGenerationRunRepository | None = None
+        self._rag_sources: SQLAlchemyRagRetrievedSourceRepository | None = None
+        self._rag_structured_drafts: SQLAlchemyRagStructuredDraftRepository | None = (
+            None
+        )
+        self._rag_evaluations: SQLAlchemyRagEvaluationRepository | None = None
 
     async def __aenter__(self) -> UnitOfWork:
         self._session = AsyncSession(self._engine, expire_on_commit=False)
@@ -115,6 +131,7 @@ class UnitOfWork:
         self._export_attempts = SQLAlchemyExportAttemptRepository(self._session)
         self._corpus_documents = SQLAlchemyCorpusDocumentRepository(self._session)
         self._corpus_chunks = SQLAlchemyCorpusChunkRepository(self._session)
+        self._corpus_activation = SQLAlchemyCorpusActivationRepository(self._session)
         self._ingestion_runs = SQLAlchemyIngestionRunRepository(self._session)
         self._ingestion_failures = SQLAlchemyIngestionFailureRepository(self._session)
         self._embedding_batches = SQLAlchemyEmbeddingBatchRepository(self._session)
@@ -125,6 +142,12 @@ class UnitOfWork:
             SQLAlchemyHumanRetrievalEvaluationRepository(self._session)
         )
         self._vector_search = ExactVectorSearchRepository(self._session)
+        self._rag_runs = SQLAlchemyRagGenerationRunRepository(self._session)
+        self._rag_sources = SQLAlchemyRagRetrievedSourceRepository(self._session)
+        self._rag_structured_drafts = SQLAlchemyRagStructuredDraftRepository(
+            self._session
+        )
+        self._rag_evaluations = SQLAlchemyRagEvaluationRepository(self._session)
         return self
 
     async def __aexit__(
@@ -252,6 +275,12 @@ class UnitOfWork:
         return self._corpus_chunks
 
     @property
+    def corpus_activation(self) -> SQLAlchemyCorpusActivationRepository:
+        if self._corpus_activation is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._corpus_activation
+
+    @property
     def ingestion_runs(self) -> SQLAlchemyIngestionRunRepository:
         if self._ingestion_runs is None:
             raise RuntimeError("UnitOfWork not initialized")
@@ -288,3 +317,27 @@ class UnitOfWork:
         if self._vector_search is None:
             raise RuntimeError("UnitOfWork not initialized")
         return self._vector_search
+
+    @property
+    def rag_runs(self) -> SQLAlchemyRagGenerationRunRepository:
+        if self._rag_runs is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._rag_runs
+
+    @property
+    def rag_sources(self) -> SQLAlchemyRagRetrievedSourceRepository:
+        if self._rag_sources is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._rag_sources
+
+    @property
+    def rag_structured_drafts(self) -> SQLAlchemyRagStructuredDraftRepository:
+        if self._rag_structured_drafts is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._rag_structured_drafts
+
+    @property
+    def rag_evaluations(self) -> SQLAlchemyRagEvaluationRepository:
+        if self._rag_evaluations is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._rag_evaluations

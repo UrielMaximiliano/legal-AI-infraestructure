@@ -21,6 +21,7 @@ from legal_ai.adapters.filesystem_corpus import (
     FilesystemCorpusReader,
 )
 from legal_ai.adapters.ollama_embedding import OllamaEmbeddingAdapter
+from legal_ai.application.corpus_activation import CorpusActivationService
 from legal_ai.application.corpus_ingestion import (
     CorpusIngestionConfiguration,
     CorpusIngestionService,
@@ -28,11 +29,14 @@ from legal_ai.application.corpus_ingestion import (
 from legal_ai.application.corpus_reindex import CorpusReindexService
 from legal_ai.application.corpus_review import CorpusReviewService
 from legal_ai.application.inference_coordinator import InferenceCoordinator
+from legal_ai.application.rag_evaluation import RagEvaluationManifestError
 from legal_ai.cli.corpus_evaluate import run as run_evaluation
 from legal_ai.cli.corpus_evaluate import run_ollama as run_ollama_evaluation
 from legal_ai.cli.corpus_probe import probe as run_probe
+from legal_ai.cli.rag_evaluate import run as run_rag_evaluation
 from legal_ai.config import CorpusConfig, settings
 from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+from legal_ai.schemas.corpus_activation import CorpusActivationRequest
 from legal_ai.schemas.corpus_reindex import CorpusReindexRequest
 from legal_ai.schemas.corpus_review import CorpusReviewRequest
 
@@ -77,6 +81,11 @@ def build_parser() -> argparse.ArgumentParser:
     reindex.add_argument("--execute", action="store_true")
     reindex.add_argument("--resume", action="store_true")
     reindex.add_argument("--run-id")
+    activate = commands.add_parser("activate-staged-index")
+    activate.add_argument("--expected-database", required=True)
+    activate.add_argument("--generation", type=int, default=1)
+    activate.add_argument("--batch-size", type=int, default=100)
+    activate.add_argument("--execute", action="store_true")
     evaluate = commands.add_parser("evaluate")
     evaluate.add_argument("--dataset", required=True)
     evaluate.add_argument("--provider", choices=("fake", "ollama"), default="fake")
@@ -89,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
     probe.add_argument("--endpoint", choices=("/api/embed", "/api/embeddings"))
     probe.add_argument("--timeout", type=float, default=10.0)
     probe.add_argument("--output", choices=("json",), default="json")
+    rag_evaluate = commands.add_parser("rag-evaluate")
+    rag_evaluate.add_argument("manifest_path")
+    rag_evaluate.add_argument("--execute", action="store_true")
+    rag_evaluate.add_argument("--provider", choices=("fake", "ollama"), default="fake")
+    rag_evaluate.add_argument("--limit", type=int)
     return parser
 
 
@@ -104,6 +118,7 @@ async def _run_ingest(args: argparse.Namespace) -> int:
         max_files=limits.max_files,
         allowed_extensions=limits.allowed_extensions,
     )
+    await reader.discover_report(args.path)
     configuration = CorpusIngestionConfiguration(
         model=args.embedding_model,
         dimensions=args.embedding_dimensions,
@@ -228,6 +243,27 @@ async def _run_reindex(args: argparse.Namespace) -> int:
     return 0 if report.status != "failed" else 2
 
 
+async def _run_activate_staged_index(args: argparse.Namespace) -> int:
+    request = CorpusActivationRequest(
+        expected_database=args.expected_database,
+        generation=args.generation,
+        batch_size=args.batch_size,
+    )
+    service = CorpusActivationService(uow_factory=UnitOfWork)
+    report = await (
+        service.execute(request) if args.execute else service.dry_run(request)
+    )
+    print(
+        json.dumps(
+            report.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return 0
+
+
 async def _run_evaluate(args: argparse.Namespace) -> int:
     payload = (
         run_evaluation(Path(args.dataset))
@@ -272,10 +308,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             return asyncio.run(_run_review(args))
         if args.command == "reindex":
             return asyncio.run(_run_reindex(args))
+        if args.command == "activate-staged-index":
+            return asyncio.run(_run_activate_staged_index(args))
         if args.command == "evaluate":
             return asyncio.run(_run_evaluate(args))
         if args.command == "probe-embedding":
             return asyncio.run(_run_probe(args))
+        if args.command == "rag-evaluate":
+            return run_rag_evaluation(
+                args.manifest_path,
+                execute=args.execute,
+                provider=args.provider,
+                limit=args.limit,
+            )
     except OSError:
         code = "CORPUS_PATH_INVALID"
         print(
@@ -287,6 +332,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 2
+    except RagEvaluationManifestError as exc:
+        code = exc.code
+        exit_code = {
+            "RAG_HOLDOUT_LEAKAGE_DETECTED": 3,
+            "RAG_EXTERNAL_PROVIDER_NOT_CONFIGURED": 4,
+            "RAG_EVALUATION_PARTIAL": 5,
+            "RAG_AUDIT_UNAVAILABLE": 6,
+        }.get(code, 2)
+        print(
+            json.dumps(
+                {"error": {"code": code}},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return exit_code
     except (CorpusReaderError, ValueError) as exc:
         code = getattr(exc, "code", str(exc))
         print(

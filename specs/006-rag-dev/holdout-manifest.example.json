@@ -1,0 +1,13 @@
+{
+  "dataset_version": "holdout-10-example-v1",
+  "split": "HOLDOUT_10",
+  "source": "external-controlled-storage",
+  "cases": [
+    {
+      "case_id": "HOLDOUT-EXAMPLE-0001",
+      "relative_path": "external/holdout-0001.pdf",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "external_id": "opaque-holdout-example-0001"
+    }
+  ]
+}

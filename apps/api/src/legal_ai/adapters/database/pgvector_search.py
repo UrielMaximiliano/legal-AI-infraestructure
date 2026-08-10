@@ -31,11 +31,17 @@ class ExactVectorSearchRepository:
         top_k: int | None = None,
         minimum_score: float | None = None,
         reviewed_only: bool = True,
+        evaluation_split: str | None = None,
     ) -> Sequence[SemanticSearchCandidate]:
         language: str | None = None
         if isinstance(filters, Mapping):
             try:
                 values = dict(filters)
+                requested_split = values.pop("evaluation_split", None)
+                if requested_split is not None:
+                    if requested_split != "INDEX_90":
+                        raise ValueError
+                    evaluation_split = requested_split
                 allowed_keys = {
                     "document_type",
                     "document_subtype",
@@ -109,6 +115,7 @@ class ExactVectorSearchRepository:
                 CorpusChunkModel.section_index,
                 CorpusChunkModel.generation,
                 CorpusChunkModel.metadata_json,
+                CorpusChunkModel.content_hash.label("chunk_content_hash"),
                 score,
             )
             .join(
@@ -132,6 +139,13 @@ class ExactVectorSearchRepository:
             statement = statement.where(CorpusDocumentModel.language == language)
         if minimum_score is not None:
             statement = statement.where(score >= minimum_score)
+        if evaluation_split is not None:
+            if evaluation_split != "INDEX_90":
+                raise ValueError("RAG_EVALUATION_SPLIT_INVALID")
+            statement = statement.where(
+                CorpusDocumentModel.metadata_json["evaluation_split"].as_string()
+                == evaluation_split
+            )
         result = await self._session.execute(
             statement.order_by(
                 distance,
@@ -180,6 +194,7 @@ class ExactVectorSearchRepository:
                         else None
                     ),
                     source_url=mapping["source_url"],
+                    content_hash=mapping["chunk_content_hash"],
                     metadata=public_metadata,
                 )
             )

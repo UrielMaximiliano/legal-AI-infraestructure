@@ -247,6 +247,32 @@ class CorpusDeduplicationRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class CorpusActivationDocument:
+    """Locked activation state for one document; contains no corpus content."""
+
+    document_id: uuid.UUID
+    state: Literal["STAGED", "ACTIVE", "INVALID"]
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusActivationSnapshot:
+    """Sanitized, deterministic preflight result for staged-index activation."""
+
+    database_name: str = field(repr=False)
+    generation: int
+    documents_total: int
+    documents_pending: int
+    documents_active: int
+    chunks_total: int
+    chunks_staged: int
+    chunks_active: int
+    embeddings_present: int
+    candidate_document_ids: tuple[uuid.UUID, ...] = field(repr=False)
+    review_version_checksum: int
+    violations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class CorpusChunk:
     id: uuid.UUID
     document_id: uuid.UUID
