@@ -211,7 +211,12 @@ def run(args: argparse.Namespace) -> int:
             "total_ms": durations.get(
                 "total", max(0, int((time.monotonic() - request_started) * 1000))
             ),
-            "error_code": run_data.get("error_code") or response.get("code"),
+            "error_code": (
+                run_data.get("error_code")
+                or response.get("error_code")
+                or response.get("code")
+            ),
+            "error_details": response.get("details") if status >= 400 else None,
         }
         _atomic_json(case_path, record)
         records.append(record)
