@@ -294,6 +294,21 @@ def write_html(path: Path, summary: dict[str, Any], rows: list[dict[str, Any]]) 
         for row in rows
     )
     overall_status, overall_class = band(summary["accuracy_end_to_end"])
+    friendly_errors = {
+        "RAG_OUTPUT_INVALID": "Salida del modelo inválida después de la reparación",
+        "SEMANTIC_SEARCH_AUDIT_UNAVAILABLE": "Auditoría de búsqueda no disponible",
+    }
+    failure_rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(friendly_errors.get(code, code))}</td>"
+        f"<td class='num'>{count}</td>"
+        f"<td class='num'>{100 * count / summary['cases']:.1f}%</td>"
+        "</tr>"
+        for code, count in sorted(
+            summary["error_code_breakdown"].items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    )
     path.write_text(
         f"""<!doctype html><html lang='es'><meta charset='utf-8'>
 <title>Evaluación del asistente jurídico</title>
@@ -319,6 +334,7 @@ th{{background:#172033;color:white;position:sticky;top:0}}.num{{text-align:right
 <div class='cards'>{cards}</div>
 <div class='grid'><section class='panel'><h2>Qué está funcionando bien</h2><ul><li>Los decretos generados respetan mayormente la estructura jurídica.</li><li>Las citas indicadas se pueden resolver contra los antecedentes recuperados.</li><li>El proceso es reproducible y registra cada caso de forma independiente.</li></ul></section>
 <section class='panel'><h2>Qué debemos mejorar</h2><ul><li>Coincidencia de nombres, fechas, organismos y normas con el decreto original.</li><li>Cobertura: recuperar una mayor parte de la información relevante.</li><li>Robustez técnica para que todos los prompts produzcan una salida válida.</li></ul></section></div>
+<h2>Por qué fallaron algunos casos</h2><section class='panel'><p>Los fallos se contabilizan con calidad integral igual a cero. Se separan los errores de formato del modelo de los problemas de infraestructura para evitar conclusiones engañosas.</p><table><thead><tr><th>Causa</th><th>Casos</th><th>Sobre el total</th></tr></thead><tbody>{failure_rows}</tbody></table></section>
 <h2>Configuración evaluada</h2><section class='config'><div><b>Generación</b>qwen3.6:35b</div><div><b>Embeddings</b>qwen3-embedding:4b</div><div><b>Vector</b>2.560 dimensiones</div><div><b>Contexto</b>8.192 tokens</div><div><b>Recuperación</b>Top 8 antecedentes</div><div><b>Inferencia</b>1 solicitud simultánea</div><div><b>Corpus</b>9.000 decretos</div><div><b>Chunks</b>65.916 fragmentos</div></section>
 <h2>Resultados por decreto</h2><div class='table-wrap'><table><thead><tr><th>Caso</th><th>Decreto original</th><th>Calidad total</th><th>Resultado técnico</th><th>Fidelidad factual</th><th>Estructura jurídica</th><th>Precisión recuperación*</th><th>Cobertura recuperación*</th><th>Tiempo</th></tr></thead><tbody>{body_rows}</tbody></table></div>
 <section class='panel foot'><h2>Cómo leer las métricas</h2><p><b>Calidad integral</b> cuenta también los fallos técnicos como cero. <b>Calidad cuando responde</b> analiza solo salidas válidas. <b>Fidelidad factual</b> compara hechos, normas, nombres y fechas. <b>Precisión</b> estima cuánto de lo recuperado fue útil; <b>cobertura</b>, cuánto del original logró cubrir. Estas dos últimas son aproximaciones léxicas y no sustituyen una evaluación jurídica humana. Latencia p50: {summary['latency_p50_ms'] / 1000:.2f}s; p95: {summary['latency_p95_ms'] / 1000:.2f}s.</p><p>Escala visual: verde 80–100; amarillo 60–79; naranja 40–59; rojo menor a 40.</p></section>
@@ -365,6 +381,16 @@ def main() -> None:
             "citations": 0.15,
         },
         "retrieval_metric_status": "LEXICAL_PROXY_NOT_HUMAN_GROUND_TRUTH",
+        "error_code_breakdown": {
+            code: sum(row.get("error_code") == code for row in rows)
+            for code in sorted(
+                {
+                    str(row["error_code"])
+                    for row in rows
+                    if row.get("error_code")
+                }
+            )
+        },
     }
     (args.results / "evaluation-summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
