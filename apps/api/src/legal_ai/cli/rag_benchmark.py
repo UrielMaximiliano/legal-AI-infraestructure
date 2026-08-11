@@ -128,7 +128,10 @@ def run(args: argparse.Namespace) -> int:
     prompts = sorted(
         path
         for path in args.prompts.glob("prompt-*.md")
-        if _PROMPT_NAME.fullmatch(path.name)
+        if (
+            (match := _PROMPT_NAME.fullmatch(path.name))
+            and int(match.group("number")) >= args.start_case
+        )
     )[: args.limit]
     if not prompts:
         raise ValueError("BENCHMARK_PROMPTS_EMPTY")
@@ -142,6 +145,7 @@ def run(args: argparse.Namespace) -> int:
         "template_id": args.template_id,
         "case_file_id": args.case_file_id,
         "requested_cases": len(prompts),
+        "start_case": args.start_case,
         "top_k": args.top_k,
         "minimum_score": args.minimum_score,
         "execution": "sequential_monoslot",
@@ -254,6 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--case-file-id", required=True)
     parser.add_argument("--run-id", default=uuid.uuid4().hex[:12])
     parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--start-case", type=int, default=1)
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--minimum-score", type=float, default=0.0)
     parser.add_argument("--timeout", type=int, default=600)

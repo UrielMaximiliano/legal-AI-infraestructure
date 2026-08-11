@@ -228,45 +228,101 @@ def average(rows: Iterable[dict[str, Any]], key: str) -> float | None:
 
 
 def write_html(path: Path, summary: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    def band(value: float) -> tuple[str, str]:
+        if value >= 80:
+            return "Sólido", "good"
+        if value >= 60:
+            return "Aceptable", "warn"
+        if value >= 40:
+            return "A mejorar", "low"
+        return "Crítico", "bad"
+
+    def card(label: str, value: float, explanation: str) -> str:
+        status, css_class = band(value)
+        return (
+            f"<article class='card {css_class}'><span>{html.escape(label)}</span>"
+            f"<strong>{value:.1f}%</strong><b>{status}</b>"
+            f"<small>{html.escape(explanation)}</small>"
+            f"<div class='bar'><i style='width:{min(100, max(0, value)):.1f}%'></i></div></article>"
+        )
+
     cards = "".join(
-        f"<div class='card'><span>{html.escape(label)}</span><strong>{value}</strong></div>"
-        for label, value in (
-            ("Accuracy E2E", f"{summary['accuracy_end_to_end']:.2f}%"),
-            ("Accuracy outputs válidos", f"{summary['accuracy_average']:.2f}%"),
-            ("Éxito técnico", f"{summary['technical_success_rate']:.1f}%"),
-            ("Entity F1", f"{summary['entity_f1_average']:.3f}"),
-            ("Estructura", f"{summary['structure_average']:.3f}"),
-            ("Citas válidas", f"{summary['citation_validity_average']:.3f}"),
-            ("Latencia p50", f"{summary['latency_p50_ms'] / 1000:.2f}s"),
+        (
+            card(
+                "Calidad integral",
+                summary["accuracy_end_to_end"],
+                "Incluye respuestas correctas, incompletas y fallos técnicos.",
+            ),
+            card(
+                "Calidad cuando responde",
+                summary["accuracy_average"],
+                "Evalúa solamente los decretos que el sistema logró generar.",
+            ),
+            card(
+                "Éxito técnico",
+                summary["technical_success_rate"],
+                "Porcentaje de solicitudes que terminaron con una respuesta válida.",
+            ),
+            card(
+                "Fidelidad factual y normativa",
+                summary["entity_f1_average"] * 100,
+                "Coincidencia de personas, organismos, normas, fechas y referencias.",
+            ),
+            card(
+                "Estructura jurídica",
+                summary["structure_average"] * 100,
+                "Respeta secciones y forma típica de un decreto.",
+            ),
+            card(
+                "Citas verificables",
+                summary["citation_validity_average"] * 100,
+                "Las fuentes citadas pertenecen al contexto recuperado.",
+            ),
         )
     )
     body_rows = "".join(
         "<tr>"
         f"<td>{row['case_number']:04d}</td><td>{html.escape(row['name'])}</td>"
-        f"<td class='num'>{row['accuracy']:.2f}%</td>"
+        f"<td class='num score'>{row['accuracy']:.1f}%</td>"
         f"<td>{'OK' if row['status'] == 'SUCCEEDED' else html.escape(str(row.get('error_code')))}</td>"
-        f"<td class='num'>{(row.get('entity_f1') or 0):.3f}</td>"
-        f"<td class='num'>{(row.get('structure_score') or 0):.3f}</td>"
-        f"<td class='num'>{(row.get('precision_at_5_proxy') or 0):.3f}</td>"
-        f"<td class='num'>{(row.get('recall_at_5_proxy') or 0):.3f}</td>"
+        f"<td class='num'>{(row.get('entity_f1') or 0) * 100:.1f}%</td>"
+        f"<td class='num'>{(row.get('structure_score') or 0) * 100:.1f}%</td>"
+        f"<td class='num'>{(row.get('precision_at_5_proxy') or 0) * 100:.1f}%</td>"
+        f"<td class='num'>{(row.get('recall_at_5_proxy') or 0) * 100:.1f}%</td>"
         f"<td class='num'>{(row.get('total_ms') or 0) / 1000:.2f}s</td>"
         "</tr>"
         for row in rows
     )
+    overall_status, overall_class = band(summary["accuracy_end_to_end"])
     path.write_text(
         f"""<!doctype html><html lang='es'><meta charset='utf-8'>
-<title>Benchmark RAG legal - Accuracy visible</title>
-<style>body{{font:15px system-ui;margin:36px;color:#17202a;background:#f5f7fa}}
-h1{{margin-bottom:4px}} .note{{color:#566573;max-width:1000px}}
-.cards{{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;margin:24px 0}}
-.card{{background:white;border:1px solid #d5d8dc;border-radius:10px;padding:16px}}
-.card span{{display:block;color:#566573}} .card strong{{font-size:26px}}
-table{{width:100%;border-collapse:collapse;background:white}}th,td{{padding:9px;border-bottom:1px solid #e5e7e9;text-align:left}}
-th{{background:#17202a;color:white;position:sticky;top:0}}.num{{text-align:right}}</style>
-<h1>Benchmark RAG legal</h1><p class='note'>Piloto de 20 casos. Accuracy es un score compuesto transparente; Precision/Recall se muestran como proxy léxico hasta disponer de relevancia documental etiquetada por humanos.</p>
+<title>Evaluación del asistente jurídico</title>
+<style>
+:root{{--ink:#162033;--muted:#596579;--paper:#fff;--bg:#f1f5f9;--line:#d9e1ea}}
+*{{box-sizing:border-box}}body{{font:15px system-ui;margin:0;color:var(--ink);background:var(--bg)}}
+main{{max-width:1440px;margin:auto;padding:36px}}h1{{margin:0 0 6px;font-size:34px}}h2{{margin-top:34px}}
+.lead{{font-size:18px;color:var(--muted);max-width:1000px}}.verdict{{padding:18px 22px;border-radius:12px;background:white;border-left:8px solid #d97706;margin:22px 0}}
+.verdict strong{{font-size:20px}}.verdict.bad{{border-color:#dc2626}}.verdict.low{{border-color:#d97706}}.verdict.warn{{border-color:#eab308}}.verdict.good{{border-color:#16a34a}}
+.cards{{display:grid;grid-template-columns:repeat(3,minmax(210px,1fr));gap:14px;margin:24px 0}}
+.card{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:6px}}
+.card span{{color:var(--muted);font-weight:600}}.card strong{{font-size:30px}}.card b{{font-size:13px}}.card small{{min-height:42px;color:var(--muted)}}
+.bar{{height:7px;background:#e5e7eb;border-radius:9px;overflow:hidden;margin-top:8px}}.bar i{{display:block;height:100%;background:#dc2626}}.low .bar i{{background:#d97706}}.warn .bar i{{background:#eab308}}.good .bar i{{background:#16a34a}}
+.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.panel{{background:white;border:1px solid var(--line);border-radius:12px;padding:18px}}.panel li{{margin:8px 0}}
+.config{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}.config div{{background:#eaf0f6;padding:11px;border-radius:8px}}.config b{{display:block}}
+.table-wrap{{overflow:auto;border:1px solid var(--line);border-radius:12px}}table{{width:100%;border-collapse:collapse;background:white;white-space:nowrap}}th,td{{padding:10px;border-bottom:1px solid #e5e7e9;text-align:left}}
+th{{background:#172033;color:white;position:sticky;top:0}}.num{{text-align:right}}.score{{font-weight:700}}
+.foot{{color:var(--muted);font-size:13px;line-height:1.55}}@media(max-width:900px){{.cards,.grid,.config{{grid-template-columns:1fr}}main{{padding:20px}}}}
+</style><main>
+<h1>Evaluación del asistente jurídico</h1>
+<p class='lead'>Comparación automática entre decretos generados por el RAG y sus PDF oficiales de referencia. Los PDF se usan únicamente para medir el resultado: nunca se entregan al modelo.</p>
+<section class='verdict {overall_class}'><strong>Diagnóstico general: {overall_status}</strong><br>La estructura jurídica y las citas son fuertes, pero la fidelidad de hechos y normas todavía necesita mejorar antes de usar el sistema en producción sin revisión humana.</section>
 <div class='cards'>{cards}</div>
-<h2>Resultados por caso</h2><table><thead><tr><th>Caso</th><th>Referencia</th><th>Accuracy</th><th>Estado</th><th>Entity F1</th><th>Estructura</th><th>P@5 proxy</th><th>R@5 proxy</th><th>Latencia</th></tr></thead><tbody>{body_rows}</tbody></table>
-</html>""",
+<div class='grid'><section class='panel'><h2>Qué está funcionando bien</h2><ul><li>Los decretos generados respetan mayormente la estructura jurídica.</li><li>Las citas indicadas se pueden resolver contra los antecedentes recuperados.</li><li>El proceso es reproducible y registra cada caso de forma independiente.</li></ul></section>
+<section class='panel'><h2>Qué debemos mejorar</h2><ul><li>Coincidencia de nombres, fechas, organismos y normas con el decreto original.</li><li>Cobertura: recuperar una mayor parte de la información relevante.</li><li>Robustez técnica para que todos los prompts produzcan una salida válida.</li></ul></section></div>
+<h2>Configuración evaluada</h2><section class='config'><div><b>Generación</b>qwen3.6:35b</div><div><b>Embeddings</b>qwen3-embedding:4b</div><div><b>Vector</b>2.560 dimensiones</div><div><b>Contexto</b>8.192 tokens</div><div><b>Recuperación</b>Top 8 antecedentes</div><div><b>Inferencia</b>1 solicitud simultánea</div><div><b>Corpus</b>9.000 decretos</div><div><b>Chunks</b>65.916 fragmentos</div></section>
+<h2>Resultados por decreto</h2><div class='table-wrap'><table><thead><tr><th>Caso</th><th>Decreto original</th><th>Calidad total</th><th>Resultado técnico</th><th>Fidelidad factual</th><th>Estructura jurídica</th><th>Precisión recuperación*</th><th>Cobertura recuperación*</th><th>Tiempo</th></tr></thead><tbody>{body_rows}</tbody></table></div>
+<section class='panel foot'><h2>Cómo leer las métricas</h2><p><b>Calidad integral</b> cuenta también los fallos técnicos como cero. <b>Calidad cuando responde</b> analiza solo salidas válidas. <b>Fidelidad factual</b> compara hechos, normas, nombres y fechas. <b>Precisión</b> estima cuánto de lo recuperado fue útil; <b>cobertura</b>, cuánto del original logró cubrir. Estas dos últimas son aproximaciones léxicas y no sustituyen una evaluación jurídica humana. Latencia p50: {summary['latency_p50_ms'] / 1000:.2f}s; p95: {summary['latency_p95_ms'] / 1000:.2f}s.</p><p>Escala visual: verde 80–100; amarillo 60–79; naranja 40–59; rojo menor a 40.</p></section>
+</main></html>""",
         encoding="utf-8",
     )
 
