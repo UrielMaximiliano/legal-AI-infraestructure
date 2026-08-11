@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from collections.abc import Sequence
@@ -10,6 +11,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
@@ -40,6 +42,8 @@ from legal_ai.schemas.rag import (
     RagStructuredDraft,
     rag_schema,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class RagGenerationError(DomainError):
@@ -483,6 +487,20 @@ class RagGenerationService:
                 payload = candidate.model_dump(mode="json")
                 break
             except (StructuredGenerationError, ValueError, TypeError) as exc:
+                if isinstance(exc, ValidationError):
+                    logger.warning(
+                        "rag_validation_failed issues=%s attempt=%s",
+                        [
+                            {
+                                "location": ".".join(
+                                    str(part) for part in issue["loc"]
+                                ),
+                                "type": issue["type"],
+                            }
+                            for issue in exc.errors(include_input=False)
+                        ][:20],
+                        attempt + 1,
+                    )
                 validation_error = (
                     exc.code
                     if isinstance(exc, StructuredGenerationError)
