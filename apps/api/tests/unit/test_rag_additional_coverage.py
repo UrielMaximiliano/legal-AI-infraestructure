@@ -751,6 +751,7 @@ async def test_ollama_adapter_constrains_citations_to_retrieved_context() -> Non
         return found
 
     assert citation_enums(captured["format"]) == [["SRC-007"]] * 4
+    assert captured["think"] is False
 
 
 @pytest.mark.asyncio

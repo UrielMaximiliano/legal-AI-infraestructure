@@ -196,6 +196,7 @@ class OllamaStructuredGenerationProvider:
                 {"role": "user", "content": user_message},
             ],
             "stream": False,
+            "think": False,
             "format": self._schema_for_context(schema, context),
             "options": {"temperature": temperature},
         }
