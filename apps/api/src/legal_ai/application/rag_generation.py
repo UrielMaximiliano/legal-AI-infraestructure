@@ -44,6 +44,7 @@ from legal_ai.schemas.rag import (
 )
 
 logger = logging.getLogger(__name__)
+_REVIEW_WARNING = "BORRADOR NO VINCULANTE SUJETO A REVISION HUMANA"
 
 
 class RagGenerationError(DomainError):
@@ -480,6 +481,18 @@ class RagGenerationService:
                         generate_call,
                         timeout=300,
                     )
+                raw["warnings"] = [_REVIEW_WARNING]
+                raw["sources"] = [
+                    {
+                        "citation_id": source.citation_id,
+                        "external_id": source.external_id,
+                        "title": source.title,
+                        "publication_date": source.publication_date,
+                        "section_type": source.section_type,
+                        "source_url": source.source_url,
+                    }
+                    for source in selected
+                ]
                 candidate = RagStructuredDraft.model_validate(raw)
                 allowed = {source.citation_id for source in selected}
                 if not set(candidate.citation_ids).issubset(allowed):
