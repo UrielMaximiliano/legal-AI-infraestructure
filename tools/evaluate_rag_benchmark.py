@@ -326,8 +326,11 @@ main{{max-width:1440px;margin:auto;padding:36px}}h1{{margin:0 0 6px;font-size:34
 .config{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}.config div{{background:#eaf0f6;padding:11px;border-radius:8px}}.config b{{display:block}}
 .table-wrap{{overflow:auto;border:1px solid var(--line);border-radius:12px}}table{{width:100%;border-collapse:collapse;background:white;white-space:nowrap}}th,td{{padding:10px;border-bottom:1px solid #e5e7e9;text-align:left}}
 th{{background:#172033;color:white;position:sticky;top:0}}.num{{text-align:right}}.score{{font-weight:700}}
+.print-button{{position:fixed;right:24px;top:24px;border:0;border-radius:9px;background:#1d4ed8;color:white;padding:12px 18px;font-weight:700;cursor:pointer;box-shadow:0 5px 18px #0002}}
 .foot{{color:var(--muted);font-size:13px;line-height:1.55}}@media(max-width:900px){{.cards,.grid,.config{{grid-template-columns:1fr}}main{{padding:20px}}}}
+@media print{{.print-button{{display:none}}body{{background:white}}main{{max-width:none;padding:12mm}}.card,.panel,.table-wrap{{break-inside:avoid}}th{{position:static}}}}
 </style><main>
+<button class='print-button' onclick='window.print()'>Exportar a PDF</button>
 <h1>Evaluación del asistente jurídico</h1>
 <p class='lead'>Comparación automática entre decretos generados por el RAG y sus PDF oficiales de referencia. Los PDF se usan únicamente para medir el resultado: nunca se entregan al modelo.</p>
 <section class='verdict {overall_class}'><strong>Diagnóstico general: {overall_status}</strong><br>La estructura jurídica y las citas son fuertes, pero la fidelidad de hechos y normas todavía necesita mejorar antes de usar el sistema en producción sin revisión humana.</section>
