@@ -259,6 +259,7 @@ class RagGenerationService:
         generation_model: str = "qwen3.6:35b",
         embedding_model: str = "qwen3-embedding:4b-q4_K_M",
         embedding_dimensions: int = 2560,
+        document_subtype: str = "designacion_transitoria",
         inference_coordinator: InferenceCoordinator | None = None,
     ) -> None:
         if generation_model != "qwen3.6:35b":
@@ -276,6 +277,9 @@ class RagGenerationService:
         self._generation_model = generation_model
         self._embedding_model = embedding_model
         self._embedding_dimensions = embedding_dimensions
+        if document_subtype not in {"designacion_transitoria", "decreto"}:
+            raise ValueError("RAG_DOCUMENT_SUBTYPE_INVALID")
+        self._document_subtype = document_subtype
         self._coordinator = inference_coordinator
 
     def _request_hash(self, request: RagDraftGenerationRequest) -> str:
@@ -290,6 +294,7 @@ class RagGenerationService:
                 "embedding_model": self._embedding_model,
                 "embedding_dimensions": self._embedding_dimensions,
                 "generation_model": self._generation_model,
+                "document_subtype": self._document_subtype,
             }
         )
 
@@ -340,7 +345,7 @@ class RagGenerationService:
             "template_id": str(request.template_id),
             **request.variables,
         }
-        query = RagQueryBuilder().build(
+        query = RagQueryBuilder(self._document_subtype).build(
             variables=query_variables,
             language=request.retrieval.language,
             organization=request.retrieval.organization,

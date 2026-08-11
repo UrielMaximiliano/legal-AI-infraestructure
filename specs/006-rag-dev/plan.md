@@ -260,6 +260,7 @@ RAG_MAX_CHUNKS_PER_DOCUMENT=2
 RAG_SCHEMA_REPAIR_ATTEMPTS=1
 RAG_REQUIRE_REVIEWED=true
 RAG_REQUIRED_EVALUATION_SPLIT=INDEX_90
+RAG_REQUIRED_DOCUMENT_SUBTYPE=designacion_transitoria
 ```
 
 Los límites son defaults de desarrollo y deberán validarse en G8; no son SLA ni garantía de capacidad.

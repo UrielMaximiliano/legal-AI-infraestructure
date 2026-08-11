@@ -148,6 +148,20 @@ class RagRetrievalService:
         if (
             filters.get("evaluation_split") != "INDEX_90"
             or filters.get("review_status") != "REVIEWED"
+            or filters.get("document_type") != "decreto"
+            or filters.get("document_subtype")
+            not in {"designacion_transitoria", "decreto"}
+            or filters.get("jurisdiction") != "nacion"
+            or set(filters)
+            - {
+                "document_type",
+                "document_subtype",
+                "jurisdiction",
+                "language",
+                "organization",
+                "review_status",
+                "evaluation_split",
+            }
         ):
             raise ValueError("RAG_CORPUS_POLICY_INVALID")
         pool_size = candidate_pool_size or min(3 * top_k, 50)
@@ -167,7 +181,11 @@ class RagRetrievalService:
             async with self._uow_factory() as uow:
                 candidates = await uow.vector_search.search(
                     query_vector,
-                    filters=filters,
+                    document_type=filters["document_type"],
+                    document_subtype=filters["document_subtype"],
+                    jurisdiction=filters["jurisdiction"],
+                    language=filters.get("language"),
+                    organization=filters.get("organization"),
                     top_k=pool_size,
                     minimum_score=minimum_score,
                     reviewed_only=True,

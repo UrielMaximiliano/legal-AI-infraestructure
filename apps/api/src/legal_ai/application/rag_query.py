@@ -25,6 +25,11 @@ class RagQuery:
 class RagQueryBuilder:
     """Build only from validated scalar fields and fixed corpus policy."""
 
+    def __init__(self, document_subtype: str = "designacion_transitoria") -> None:
+        if document_subtype not in {"designacion_transitoria", "decreto"}:
+            raise ValueError("RAG_DOCUMENT_SUBTYPE_INVALID")
+        self._document_subtype = document_subtype
+
     def build(
         self,
         *,
@@ -59,7 +64,7 @@ class RagQueryBuilder:
             query_hash=sha256_text(text),
             filters={
                 "document_type": "decreto",
-                "document_subtype": "designacion_transitoria",
+                "document_subtype": self._document_subtype,
                 "jurisdiction": "nacion",
                 "review_status": "REVIEWED",
                 "evaluation_split": "INDEX_90",

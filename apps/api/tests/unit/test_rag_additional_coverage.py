@@ -252,6 +252,10 @@ def test_query_builder_and_observability_are_allowlisted() -> None:
     )
     assert "case_number: 42" in query.text
     assert "embedding" not in query.text
+    decree_query = RagQueryBuilder("decreto").build(variables={"cargo": "Director"})
+    assert decree_query.filters["document_subtype"] == "decreto"
+    with pytest.raises(ValueError, match="RAG_DOCUMENT_SUBTYPE_INVALID"):
+        RagQueryBuilder("ley")
     with pytest.raises(ValueError, match="RAG_ORGANIZATION_INVALID"):
         RagQueryBuilder().build(variables={"cargo": "Director"}, organization="token")
     with pytest.raises(ValueError, match="RAG_LANGUAGE_INVALID"):

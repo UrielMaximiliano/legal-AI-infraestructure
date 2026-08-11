@@ -39,11 +39,11 @@ def _candidate(
 class _VectorSearch:
     def __init__(self, candidates: tuple[SemanticSearchCandidate, ...]) -> None:
         self.candidates = candidates
-        self.filters: dict[str, str] | None = None
+        self.search_kwargs: dict[str, object] | None = None
 
     async def search(self, vector, **kwargs):
         del vector
-        self.filters = kwargs["filters"]
+        self.search_kwargs = kwargs
         return self.candidates
 
 
@@ -107,7 +107,9 @@ async def test_retrieval_is_reviewed_index90_and_diversified() -> None:
         result.context.sources[1].disposition
         is RagSourceDisposition.EXCLUDED_DIVERSITY
     )
-    assert vector_search.filters["evaluation_split"] == "INDEX_90"
+    assert vector_search.search_kwargs is not None
+    assert vector_search.search_kwargs["evaluation_split"] == "INDEX_90"
+    assert vector_search.search_kwargs["document_subtype"] == "designacion_transitoria"
 
 
 @pytest.mark.asyncio

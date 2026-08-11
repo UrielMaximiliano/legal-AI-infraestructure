@@ -113,6 +113,7 @@ def _build_service() -> tuple[RagGenerationService, InferenceCoordinator]:
             audit=SQLAlchemyRagAuditStore(),
             prompt_version=settings.rag.prompt_version,
             schema_repair_attempts=settings.rag.schema_repair_attempts,
+            document_subtype=settings.rag.required_document_subtype,
             inference_coordinator=coordinator,
         ),
         coordinator,

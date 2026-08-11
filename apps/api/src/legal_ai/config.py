@@ -262,6 +262,9 @@ class RagConfig(BaseSettings):
     required_evaluation_split: str = Field(
         default="INDEX_90", alias="RAG_REQUIRED_EVALUATION_SPLIT"
     )
+    required_document_subtype: str = Field(
+        default="designacion_transitoria", alias="RAG_REQUIRED_DOCUMENT_SUBTYPE"
+    )
     max_request_bytes: int = Field(
         default=256 * 1024, alias="RAG_MAX_REQUEST_BYTES", gt=0, le=2 * 1024 * 1024
     )
@@ -276,6 +279,8 @@ class RagConfig(BaseSettings):
             raise ValueError("OLLAMA_GENERATION_MODEL_INVALID")
         if self.required_evaluation_split != "INDEX_90":
             raise ValueError("RAG_REQUIRED_EVALUATION_SPLIT_INVALID")
+        if self.required_document_subtype not in {"designacion_transitoria", "decreto"}:
+            raise ValueError("RAG_REQUIRED_DOCUMENT_SUBTYPE_INVALID")
         return self
 
 

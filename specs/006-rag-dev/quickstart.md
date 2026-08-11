@@ -29,6 +29,7 @@ RAG_PROMPT_VERSION=rag-decree-v1
 RAG_SCHEMA_VERSION=1
 RAG_TOP_K=8
 RAG_REQUIRED_EVALUATION_SPLIT=INDEX_90
+RAG_REQUIRED_DOCUMENT_SUBTYPE=designacion_transitoria
 ```
 
 Nunca pegar tokens en comandos que queden en history, logs o evidencia.

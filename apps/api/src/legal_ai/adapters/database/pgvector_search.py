@@ -26,6 +26,7 @@ class ExactVectorSearchRepository:
         document_type: str = "decreto",
         document_subtype: str = "designacion_transitoria",
         jurisdiction: str = "nacion",
+        language: str | None = None,
         organization: str | None = None,
         limit: int = 10,
         top_k: int | None = None,
@@ -33,7 +34,6 @@ class ExactVectorSearchRepository:
         reviewed_only: bool = True,
         evaluation_split: str | None = None,
     ) -> Sequence[SemanticSearchCandidate]:
-        language: str | None = None
         if isinstance(filters, Mapping):
             try:
                 values = dict(filters)
@@ -68,8 +68,6 @@ class ExactVectorSearchRepository:
             document_subtype = filters.document_subtype or document_subtype
             jurisdiction = filters.jurisdiction or jurisdiction
             organization = filters.organization
-            language = filters.language
-        elif filters is not None:
             language = filters.language
         review_status = (
             filters.review_status
