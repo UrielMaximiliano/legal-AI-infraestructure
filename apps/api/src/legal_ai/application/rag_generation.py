@@ -172,6 +172,11 @@ class SQLAlchemyRagAuditStore:
                 return None
             if existing.request_hash != request_hash:
                 raise RagGenerationError("RAG_IDEMPOTENCY_KEY_MISMATCH")
+            # Failed runs are intentionally excluded from the partial unique
+            # index and may be retried with the same idempotency key.  Treating
+            # them as in-progress permanently blocked resumable benchmarks.
+            if existing.status is RagGenerationStatus.FAILED:
+                return None
             if existing.status is not RagGenerationStatus.SUCCEEDED:
                 raise RagGenerationError("RAG_GENERATION_IN_PROGRESS")
             if existing.draft_id is None:

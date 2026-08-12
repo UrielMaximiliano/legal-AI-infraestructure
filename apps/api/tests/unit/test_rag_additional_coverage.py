@@ -632,6 +632,21 @@ async def test_sql_audit_store_round_trips_cached_outcome_and_writes() -> None:
         await SQLAlchemyRagAuditStore(_PendingUow).reserve("key", pending.request_hash)
     assert in_progress.value.code == "RAG_GENERATION_IN_PROGRESS"
 
+    failed = replace(existing, status=RagGenerationStatus.FAILED, draft_id=None)
+
+    class _FailedUow(_Uow):
+        def __init__(self) -> None:
+            super().__init__()
+            self.rag_runs.find_by_idempotency_hash = (  # type: ignore[method-assign]
+                lambda key: _return_value(failed, key)
+            )
+
+    # Failed runs are excluded from the partial unique index and are therefore
+    # retryable with the same idempotency key.
+    assert await SQLAlchemyRagAuditStore(_FailedUow).reserve(
+        "key", failed.request_hash
+    ) is None
+
     class _IntegrityRuns(_Runs):
         async def create(self, value: object) -> None:
             del value
