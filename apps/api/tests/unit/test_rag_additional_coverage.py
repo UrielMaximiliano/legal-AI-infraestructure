@@ -252,6 +252,15 @@ def test_query_builder_and_observability_are_allowlisted() -> None:
     )
     assert "case_number: 42" in query.text
     assert "embedding" not in query.text
+    segmented = RagQueryBuilder("decreto").build(
+        variables={
+            "objeto": "Prorrogar designaciones transitorias",
+            "solicitud_01": "Detalle factual reservado para la generación",
+        }
+    )
+    assert "objeto: Prorrogar designaciones transitorias" in segmented.text
+    assert "solicitud_01" not in segmented.text
+    assert "Detalle factual" not in segmented.text
     decree_query = RagQueryBuilder("decreto").build(variables={"cargo": "Director"})
     assert decree_query.filters["document_subtype"] == "decreto"
     with pytest.raises(ValueError, match="RAG_DOCUMENT_SUBTYPE_INVALID"):

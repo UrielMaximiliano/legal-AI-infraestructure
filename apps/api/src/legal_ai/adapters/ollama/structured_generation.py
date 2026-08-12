@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Any
@@ -12,6 +13,8 @@ from urllib.parse import urlparse
 import httpx
 
 from legal_ai.ports.structured_generation import StructuredGenerationError
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class OllamaStructuredGenerationProvider:
@@ -26,10 +29,14 @@ class OllamaStructuredGenerationProvider:
         endpoint: str = "/api/chat",
         timeout_seconds: float = 300.0,
         max_retries: int = 1,
+        context_window: int = 8_192,
+        max_output_tokens: int = 3_072,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         if model != "qwen3.6:35b" or endpoint != "/api/chat":
             raise ValueError("OLLAMA_GENERATION_CONTRACT_INVALID")
+        if context_window < 4_096 or not 512 <= max_output_tokens < context_window:
+            raise ValueError("OLLAMA_GENERATION_TOKEN_BUDGET_INVALID")
         parsed = urlparse(base_url)
         if (
             parsed.scheme not in {"http", "https"}
@@ -60,6 +67,8 @@ class OllamaStructuredGenerationProvider:
         self.endpoint = endpoint
         self.timeout = timeout_seconds
         self.max_retries = max(0, min(max_retries, 2))
+        self.context_window = context_window
+        self.max_output_tokens = max_output_tokens
         self._client = client
 
     def _headers(self) -> dict[str, str]:
@@ -127,7 +136,17 @@ class OllamaStructuredGenerationProvider:
                 clean = clean[4:].lstrip()
         try:
             parsed = json.loads(clean)
-        except (TypeError, ValueError) as exc:
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "ollama_structured_json_invalid chars=%s line=%s column=%s "
+                "position=%s open_braces=%s close_braces=%s",
+                len(clean),
+                exc.lineno,
+                exc.colno,
+                exc.pos,
+                clean.count("{"),
+                clean.count("}"),
+            )
             raise StructuredGenerationError("RAG_OUTPUT_INVALID") from exc
         if not isinstance(parsed, dict):
             raise StructuredGenerationError("RAG_OUTPUT_INVALID")
@@ -198,13 +217,26 @@ class OllamaStructuredGenerationProvider:
             "stream": False,
             "think": False,
             "format": self._schema_for_context(schema, context),
-            "options": {"temperature": temperature},
+            "options": {
+                "temperature": temperature,
+                "num_ctx": self.context_window,
+                "num_predict": self.max_output_tokens,
+            },
         }
         body = await self._request(payload)
         message = body.get("message")
         if not isinstance(message, dict):
             raise StructuredGenerationError("OLLAMA_RESPONSE_INVALID")
-        return self._parse_content(message.get("content"))
+        content = message.get("content")
+        logger.info(
+            "ollama_structured_response done_reason=%s prompt_tokens=%s "
+            "output_tokens=%s content_chars=%s",
+            body.get("done_reason"),
+            body.get("prompt_eval_count"),
+            body.get("eval_count"),
+            len(content) if isinstance(content, str) else 0,
+        )
+        return self._parse_content(content)
 
     async def health_check(self) -> Mapping[str, Any]:
         return {"status": "ready", "model": self.model}

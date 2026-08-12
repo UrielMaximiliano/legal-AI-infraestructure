@@ -51,7 +51,8 @@ async def _rag_generation_readiness() -> RagGenerationReadiness:
         try:
             async with UnitOfWork() as uow:
                 eligible = await uow.corpus_documents.count_eligible_reviewed_documents(
-                    evaluation_split=settings.rag.required_evaluation_split
+                    evaluation_split=settings.rag.required_evaluation_split,
+                    document_subtype=settings.rag.required_document_subtype,
                 )
         except Exception:
             logger.warning("RAG corpus readiness query failed", exc_info=True)

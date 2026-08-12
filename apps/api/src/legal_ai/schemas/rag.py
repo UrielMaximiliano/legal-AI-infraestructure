@@ -333,3 +333,23 @@ def rag_schema() -> dict[str, Any]:
             ),
         }
     )
+
+
+def rag_generation_schema() -> dict[str, Any]:
+    """Return only the fields that Ollama must generate.
+
+    ``sources`` and ``warnings`` are authoritative server-owned fields.  They
+    are injected after generation from the selected retrieval sources and the
+    mandatory review warning, so asking the model to reproduce them wastes the
+    bounded context/output window and can truncate otherwise valid JSON.
+    """
+
+    schema = rag_schema()
+    properties = dict(schema["properties"])
+    properties.pop("sources")
+    properties.pop("warnings")
+    schema["properties"] = properties
+    schema["required"] = [
+        field for field in schema["required"] if field in properties
+    ]
+    return schema

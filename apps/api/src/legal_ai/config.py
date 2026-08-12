@@ -238,6 +238,12 @@ class RagConfig(BaseSettings):
     generation_max_retries: int = Field(
         default=1, alias="OLLAMA_GENERATION_MAX_RETRIES", ge=0, le=2
     )
+    generation_context_window: int = Field(
+        default=8_192, alias="OLLAMA_GENERATION_CONTEXT_LENGTH", ge=4_096, le=32_768
+    )
+    generation_max_output_tokens: int = Field(
+        default=3_072, alias="OLLAMA_GENERATION_MAX_OUTPUT_TOKENS", ge=512, le=8_192
+    )
     prompt_version: str = Field(default="rag-decree-v1", alias="RAG_PROMPT_VERSION")
     schema_version: int = Field(default=1, alias="RAG_SCHEMA_VERSION", gt=0)
     top_k: int = Field(default=8, alias="RAG_TOP_K", ge=3, le=20)
@@ -247,7 +253,7 @@ class RagConfig(BaseSettings):
     minimum_score: float = Field(default=0.0, alias="RAG_MINIMUM_SCORE", ge=0.0, le=1.0)
     max_context_bytes: int = Field(default=65_536, alias="RAG_MAX_CONTEXT_BYTES", gt=0)
     max_context_tokens_estimate: int = Field(
-        default=16_384, alias="RAG_MAX_CONTEXT_TOKENS_ESTIMATE", gt=0
+        default=2_048, alias="RAG_MAX_CONTEXT_TOKENS_ESTIMATE", gt=0
     )
     max_chunks_per_document: int = Field(
         default=2, alias="RAG_MAX_CHUNKS_PER_DOCUMENT", ge=1, le=10
@@ -277,6 +283,8 @@ class RagConfig(BaseSettings):
             raise ValueError("OLLAMA_GENERATION_ENDPOINT_INVALID")
         if self.generation_model != "qwen3.6:35b":
             raise ValueError("OLLAMA_GENERATION_MODEL_INVALID")
+        if self.generation_max_output_tokens >= self.generation_context_window:
+            raise ValueError("OLLAMA_GENERATION_TOKEN_BUDGET_INVALID")
         if self.required_evaluation_split != "INDEX_90":
             raise ValueError("RAG_REQUIRED_EVALUATION_SPLIT_INVALID")
         if self.required_document_subtype not in {"designacion_transitoria", "decreto"}:

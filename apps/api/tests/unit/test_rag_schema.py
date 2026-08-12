@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from legal_ai.schemas.rag import (
     RagDraftGenerationRequest,
     RagStructuredDraft,
+    rag_generation_schema,
     rag_schema,
 )
 
@@ -60,6 +61,15 @@ def test_provider_schema_is_structural_closed_and_ref_free() -> None:
                 assert_closed(child)
 
     assert_closed(schema)
+
+
+def test_generation_schema_excludes_server_owned_fields() -> None:
+    schema = rag_generation_schema()
+    assert "sources" not in schema["properties"]
+    assert "warnings" not in schema["properties"]
+    assert "sources" not in schema["required"]
+    assert "warnings" not in schema["required"]
+    assert set(schema["required"]) == set(schema["properties"])
     assert schema["properties"]["schema_version"]["const"] == 1
 
 

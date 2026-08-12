@@ -44,6 +44,10 @@ class RagQueryBuilder:
             for key, value in sorted(group.items()):
                 if not _KEY_RE.fullmatch(key) or _SENSITIVE_RE.search(key):
                     continue
+                # Long benchmark request segments belong to generation context,
+                # not to the semantic retrieval query sent to the embedder.
+                if key.startswith("solicitud_"):
+                    continue
                 if not isinstance(value, str):
                     continue
                 clean = " ".join(value.split())[:500]

@@ -28,6 +28,7 @@ class BenchmarkCase:
     object_text: str
     topic: str
     organization: str
+    prompt_text: str | None = None
 
 
 def _field(text: str, label: str) -> str:
@@ -37,11 +38,40 @@ def _field(text: str, label: str) -> str:
     return match.group(1).strip()
 
 
-def parse_prompt(path: Path) -> BenchmarkCase:
+def parse_prompt(
+    path: Path, *, manifest_record: dict[str, Any] | None = None
+) -> BenchmarkCase:
     match = _PROMPT_NAME.fullmatch(path.name)
     if match is None:
         raise ValueError("BENCHMARK_PROMPT_FILENAME_INVALID")
     text = path.read_text(encoding="utf-8")
+    if text.startswith("# Solicitud interna de redacción normativa"):
+        if manifest_record is None:
+            raise ValueError("BENCHMARK_V2_MANIFEST_REQUIRED")
+        organization_match = re.search(
+            r"^La iniciativa corresponde a \*\*(.+?)\*\*\.", text, re.M
+        )
+        objective_match = re.search(
+            r"^Necesito preparar un proyecto de decreto nacional para (.+?)\. "
+            r"El propósito es",
+            text,
+            re.M | re.S,
+        )
+        if organization_match is None or objective_match is None:
+            raise ValueError("BENCHMARK_V2_PROMPT_BODY_INVALID")
+        objective = " ".join(objective_match.group(1).split())
+        organization = " ".join(organization_match.group(1).split())
+        return BenchmarkCase(
+            number=int(match.group("number")),
+            external_id=match.group("external"),
+            name=objective,
+            reference_pdf=str(manifest_record["source_pdf"]),
+            reference_sha256=str(manifest_record["source_sha256"]),
+            object_text=objective,
+            topic="decreto nacional",
+            organization=organization,
+            prompt_text=text.strip(),
+        )
     object_match = re.search(
         r"^>\s*(.+?)(?=\r?\n\r?\n(?:Área temática|Area tematica):)",
         text,
@@ -63,6 +93,54 @@ def parse_prompt(path: Path) -> BenchmarkCase:
         topic=" ".join(topic_match.group(1).split()),
         organization=" ".join(organization_match.group(1).split()),
     )
+
+
+def _prompt_variables(case: BenchmarkCase) -> dict[str, str]:
+    if case.prompt_text is None:
+        return {
+            "objeto": case.object_text,
+            "area_tematica": case.topic,
+            "organismo": case.organization,
+            "restriccion": "No inventar hechos, personas, fechas, montos ni normas.",
+        }
+    words = case.prompt_text.split()
+    chunks: list[str] = []
+    current: list[str] = []
+    current_length = 0
+    for word in words:
+        added = len(word) + (1 if current else 0)
+        if current and current_length + added > 480:
+            chunks.append(" ".join(current))
+            current = [word]
+            current_length = len(word)
+        else:
+            current.append(word)
+            current_length += added
+    if current:
+        chunks.append(" ".join(current))
+    if not chunks or len(chunks) > 60:
+        raise ValueError("BENCHMARK_V2_PROMPT_SIZE_INVALID")
+    if len(chunks) > 17:
+        raise ValueError("BENCHMARK_V2_PROMPT_SIZE_INVALID")
+    variables = {
+        "objeto": case.object_text,
+        "area_tematica": case.topic,
+        "organismo": case.organization,
+        "restriccion": (
+            "Aplicar íntegramente la solicitud factual segmentada sin inventar datos."
+        ),
+    }
+    variables.update(
+        {
+            f"solicitud_{index:02d}": (
+                chunks[index - 1]
+                if index <= len(chunks)
+                else "Sin información adicional para este segmento."
+            )
+            for index in range(1, 18)
+        }
+    )
+    return variables
 
 
 def _atomic_json(path: Path, value: Any) -> None:
@@ -125,6 +203,12 @@ def _write_summary(output: Path, records: list[dict[str, Any]]) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
+    manifest_by_prompt: dict[str, dict[str, Any]] = {}
+    if args.manifest is not None:
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        manifest_by_prompt = {
+            str(record["prompt_file"]): record for record in manifest["records"]
+        }
     prompts = sorted(
         path
         for path in args.prompts.glob("prompt-*.md")
@@ -155,7 +239,7 @@ def run(args: argparse.Namespace) -> int:
     started = time.monotonic()
     records: list[dict[str, Any]] = []
     for index, path in enumerate(prompts, start=1):
-        case = parse_prompt(path)
+        case = parse_prompt(path, manifest_record=manifest_by_prompt.get(path.name))
         case_path = cases_dir / f"case-{case.number:04d}.json"
         if case_path.exists():
             records.append(json.loads(case_path.read_text(encoding="utf-8")))
@@ -164,14 +248,7 @@ def run(args: argparse.Namespace) -> int:
         payload = {
             "template_id": args.template_id,
             "case_file_id": args.case_file_id,
-            "variables": {
-                "objeto": case.object_text,
-                "area_tematica": case.topic,
-                "organismo": case.organization,
-                "restriccion": (
-                    "No inventar hechos, personas, fechas, montos ni normas."
-                ),
-            },
+            "variables": _prompt_variables(case),
             "retrieval": {
                 "top_k": args.top_k,
                 "minimum_score": args.minimum_score,
@@ -253,6 +330,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prompts", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--manifest", type=Path)
     parser.add_argument("--api-base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--template-id", required=True)
     parser.add_argument("--case-file-id", required=True)

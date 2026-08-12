@@ -20,6 +20,7 @@ from legal_ai.application.draft_service import (
     TemplateNotFoundError,
 )
 from legal_ai.application.inference_coordinator import InferenceCoordinator
+from legal_ai.application.rag_context import ContextAssembler
 from legal_ai.application.rag_generation import (
     RagGenerationError,
     RagGenerationService,
@@ -95,6 +96,10 @@ def _build_service() -> tuple[RagGenerationService, InferenceCoordinator]:
     retrieval = RagRetrievalService(
         embedding_provider=embedding,
         inference_coordinator=coordinator,
+        context_assembler=ContextAssembler(
+            max_bytes=settings.rag.max_context_bytes,
+            max_tokens_estimate=settings.rag.max_context_tokens_estimate,
+        ),
         max_chunks_per_document=settings.rag.max_chunks_per_document,
         max_chunks_per_section=settings.rag.max_chunks_per_section,
     )
@@ -105,6 +110,8 @@ def _build_service() -> tuple[RagGenerationService, InferenceCoordinator]:
         endpoint=settings.rag.generation_endpoint,
         timeout_seconds=settings.rag.generation_timeout_seconds,
         max_retries=settings.rag.generation_max_retries,
+        context_window=settings.rag.generation_context_window,
+        max_output_tokens=settings.rag.generation_max_output_tokens,
     )
     return (
         RagGenerationService(

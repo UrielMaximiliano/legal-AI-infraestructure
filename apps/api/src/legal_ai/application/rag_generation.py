@@ -40,10 +40,13 @@ from legal_ai.ports.structured_generation import (
 from legal_ai.schemas.rag import (
     RagDraftGenerationRequest,
     RagStructuredDraft,
-    rag_schema,
+    rag_generation_schema,
 )
 
-logger = logging.getLogger(__name__)
+# Uvicorn owns the process logging configuration in production.  Using its
+# error logger keeps the validation diagnostics visible without logging the
+# model output, prompt, retrieved content, or credentials.
+logger = logging.getLogger("uvicorn.error")
 _REVIEW_WARNING = "BORRADOR NO VINCULANTE SUJETO A REVISION HUMANA"
 
 
@@ -457,7 +460,7 @@ class RagGenerationService:
                     raw = await self._provider.generate_structured(
                         system_message=active_prompt.system_message,
                         user_message=active_prompt.user_message,
-                        schema=rag_schema(),
+                        schema=rag_generation_schema(),
                         temperature=0.1,
                         context=[
                             {
@@ -512,6 +515,17 @@ class RagGenerationService:
                             }
                             for issue in exc.errors(include_input=False)
                         ][:20],
+                        attempt + 1,
+                    )
+                else:
+                    logger.warning(
+                        "rag_generation_payload_failed category=%s code=%s attempt=%s",
+                        type(exc).__name__,
+                        (
+                            exc.code
+                            if isinstance(exc, StructuredGenerationError)
+                            else "RAG_OUTPUT_INVALID"
+                        ),
                         attempt + 1,
                     )
                 validation_error = (
