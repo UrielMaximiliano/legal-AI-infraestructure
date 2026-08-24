@@ -37,6 +37,15 @@ htmlcov/
 # Docker
 .docker/
 
+# Local tooling dependencies (reinstallable; never benchmark inputs/results)
+.agents/
+.deepsec/
+.deepsec/node_modules/
+.deepsec/.vercel/
+.opencode/
+.opencode/node_modules/
+skills-lock.json
+
 # uv
 uv.lock
 !apps/api/uv.lock

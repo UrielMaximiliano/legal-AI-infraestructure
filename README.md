@@ -3,7 +3,7 @@
 Las variables contractuales de Ollama para embeddings son `OLLAMA_EMBEDDING_BASE_URL`,
 `OLLAMA_EMBEDDING_TOKEN` y `OLLAMA_EMBEDDING_TIMEOUT_SECONDS`. Los nombres
 `OLLAMA_BASE_URL`, `OLLAMA_API_TOKEN` y `OLLAMA_TIMEOUT_SECONDS` se mantienen
-únicamente como aliases explícitos de compatibilidad con 001â€“004.
+únicamente como aliases explícitos de compatibilidad con 001-004.
 La referencia histórica a `OLLAMA_API_TOKEN` en el párrafo operativo de 005 significa
 ese alias; las instalaciones nuevas deben usar `OLLAMA_EMBEDDING_TOKEN`.
 
@@ -150,3 +150,11 @@ STAGED y swap atómico. La búsqueda `POST /api/v1/semantic-search` exige los
 filtros MVP y devuelve solo documentos `REVIEWED` por defecto; su auditoría es
 fail-closed. Consulte [docs/corpus-semantic-retrieval.md](docs/corpus-semantic-retrieval.md)
 para límites, evaluación y seguridad.
+
+## Benchmark de generación
+
+El protocolo para comparar las 1.000 salidas contra sus PDFs de referencia está
+documentado en [docs/benchmarks/benchmark-protocol.md](docs/benchmarks/benchmark-protocol.md).
+La evaluación automática PDF-proxy es solo provisional; las métricas jurídicas
+requieren gold facts y revisión humana. Las corridas 4B (`halfvec(2560)`) y
+0.6B (`halfvec(1024)`) se mantienen aisladas.

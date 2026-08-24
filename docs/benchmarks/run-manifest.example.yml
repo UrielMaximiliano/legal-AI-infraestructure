@@ -1,0 +1,37 @@
+# Copiar a <run-id>/config.yml y completar los valores efectivos.
+schema_version: benchmark-run.v1
+run_id: "decree-legal-4b-rag8192-ollama32768-v1"
+family: decree-legal
+code:
+  commit: "<git-sha>"
+  generated_at_utc: "<RFC3339>"
+  python: "3.12"
+  platform: "linux/amd64"
+input:
+  prompt_manifest: "<path>/prompts/manifest.json"
+  pdf_root: "<path>/pdf"
+  expected_cases: 1000
+  seed: 20260812
+  holdout_embedded: false
+embedding:
+  model: qwen3-embedding:4b-q4_K_M
+  dimensions: 2560
+  storage: halfvec(2560)
+  index_database: legal_ai
+generation:
+  model: qwen3.6:35b
+  ollama_num_ctx: 32768
+  ollama_num_parallel: 1
+rag:
+  context_tokens: 8192
+  top_k: 8
+  minimum_score: 0.0
+  reviewed_only: true
+execution:
+  endpoint_profile: "<local-or-https-profile>"
+  retries: 5
+  concurrency: 1
+  output_dir: "<path>/cases"
+evaluation:
+  proxy_status: AUTOMATED_PROVISIONAL_TEXT_ALIGNMENT
+  legal_status: NOT_CALCULABLE_UNTIL_HUMAN_GOLD
