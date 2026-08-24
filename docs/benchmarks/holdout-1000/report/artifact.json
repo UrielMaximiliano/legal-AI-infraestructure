@@ -1,0 +1,817 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Benchmark RAG jurídico",
+    "description": "Comparación reproducible de fidelidad factual sobre 1.000 decretos de holdout.",
+    "generatedAt": "2026-08-21T21:23:00-03:00",
+    "charts": [
+      {
+        "id": "accuracy_by_case",
+        "title": "Fidelidad factual automática por configuración",
+        "subtitle": "Accuracy E2E, de mejor a peor · Azul: 4B · Naranja: 0.6B · C09† es parcial",
+        "type": "bar",
+        "dataset": "accuracy_by_case",
+        "source": {
+          "id": "benchmark_summary",
+          "label": "Resumen recalculado de las 19 corridas",
+          "path": "docs/benchmarks/holdout-1000/results/benchmark-summary.csv",
+          "query": {
+            "engine": "duckdb",
+            "language": "sql",
+            "sql": "SELECT * FROM read_csv_auto('docs/benchmarks/holdout-1000/results/benchmark-summary.csv')",
+            "description": "Une cada output con el PDF por caso, nombre y SHA-256; calcula fidelidad factual y afirmaciones materiales.",
+            "filters": [
+              "1.000 casos esperados por corrida",
+              "holdout-prompt-v2; seed 20260812",
+              "PDFs del holdout no incluidos en los índices RAG",
+              "fallos y faltantes puntúan cero en la métrica extremo a extremo"
+            ],
+            "metric_definitions": {
+              "Accuracy proxy E2E": "Promedio con igual peso de los campos factuales aplicables extraídos del PDF y revelados en la solicitud; fallos y faltantes valen cero.",
+              "Precision proxy": "Afirmaciones materiales correctas sobre todas las afirmaciones materiales del output.",
+              "Recall proxy": "Afirmaciones materiales recuperadas sobre todas las afirmaciones materiales esperadas."
+            },
+            "executed_at": "2026-08-21T21:23:00-03:00"
+          }
+        },
+        "valueFormat": "number",
+        "palette": {
+          "kind": "categorical"
+        },
+        "encodings": {
+          "x": {
+            "field": "caso",
+            "type": "nominal",
+            "label": "Caso"
+          },
+          "y": {
+            "field": "accuracy",
+            "type": "quantitative",
+            "label": "%",
+            "format": "number"
+          },
+          "color": {
+            "field": "modelo",
+            "type": "nominal",
+            "label": "Modelo"
+          },
+          "tooltip": [
+            {
+              "field": "rag",
+              "type": "quantitative",
+              "label": "RAG"
+            },
+            {
+              "field": "ollama",
+              "type": "quantitative",
+              "label": "Ollama"
+            },
+            {
+              "field": "top_k",
+              "type": "quantitative",
+              "label": "top_k"
+            },
+            {
+              "field": "score_min",
+              "type": "quantitative",
+              "label": "Score mínimo"
+            },
+            {
+              "field": "exito",
+              "type": "quantitative",
+              "label": "Éxito (%)"
+            }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "all_runs",
+        "title": "Las 19 configuraciones y sus resultados",
+        "subtitle": "Valores porcentuales; *métricas automáticas contra referencia PDF",
+        "dataset": "all_runs",
+        "source": {
+          "id": "benchmark_summary",
+          "label": "Resumen recalculado de las 19 corridas",
+          "path": "docs/benchmarks/holdout-1000/results/benchmark-summary.csv",
+          "query": {
+            "engine": "duckdb",
+            "language": "sql",
+            "sql": "SELECT * FROM read_csv_auto('docs/benchmarks/holdout-1000/results/benchmark-summary.csv')",
+            "description": "Une cada output con el PDF por caso, nombre y SHA-256; calcula fidelidad factual y afirmaciones materiales.",
+            "filters": [
+              "1.000 casos esperados por corrida",
+              "holdout-prompt-v2; seed 20260812",
+              "PDFs del holdout no incluidos en los índices RAG",
+              "fallos y faltantes puntúan cero en la métrica extremo a extremo"
+            ],
+            "metric_definitions": {
+              "Accuracy proxy E2E": "Promedio con igual peso de los campos factuales aplicables extraídos del PDF y revelados en la solicitud; fallos y faltantes valen cero.",
+              "Precision proxy": "Afirmaciones materiales correctas sobre todas las afirmaciones materiales del output.",
+              "Recall proxy": "Afirmaciones materiales recuperadas sobre todas las afirmaciones materiales esperadas."
+            },
+            "executed_at": "2026-08-21T21:23:00-03:00"
+          }
+        },
+        "density": "compact",
+        "defaultSort": {
+          "field": "case_coverage",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "case_coverage",
+            "label": "Caso · cobertura",
+            "type": "text"
+          },
+          {
+            "field": "parametros",
+            "label": "Parámetros",
+            "type": "text"
+          },
+          {
+            "field": "accuracy",
+            "label": "Accuracy*",
+            "format": "number"
+          },
+          {
+            "field": "precision_recall",
+            "label": "Precision* / Recall*",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "benchmark_summary",
+        "label": "Resumen recalculado de las 19 corridas",
+        "path": "docs/benchmarks/holdout-1000/results/benchmark-summary.csv",
+        "query": {
+          "engine": "duckdb",
+          "language": "sql",
+          "sql": "SELECT * FROM read_csv_auto('docs/benchmarks/holdout-1000/results/benchmark-summary.csv')",
+          "description": "Une cada output con el PDF por caso, nombre y SHA-256; calcula fidelidad factual y afirmaciones materiales.",
+          "filters": [
+            "1.000 casos esperados por corrida",
+            "holdout-prompt-v2; seed 20260812",
+            "PDFs del holdout no incluidos en los índices RAG",
+            "fallos y faltantes puntúan cero en la métrica extremo a extremo"
+          ],
+          "metric_definitions": {
+            "Accuracy proxy E2E": "Promedio con igual peso de los campos factuales aplicables extraídos del PDF y revelados en la solicitud; fallos y faltantes valen cero.",
+            "Precision proxy": "Afirmaciones materiales correctas sobre todas las afirmaciones materiales del output.",
+            "Recall proxy": "Afirmaciones materiales recuperadas sobre todas las afirmaciones materiales esperadas."
+          },
+          "executed_at": "2026-08-21T21:23:00-03:00"
+        }
+      },
+      {
+        "id": "run_catalog",
+        "label": "Catálogo versionado de parámetros",
+        "path": "docs/benchmarks/holdout-1000/run-catalog.json",
+        "query": {
+          "engine": "duckdb",
+          "language": "sql",
+          "sql": "SELECT * FROM read_json_auto('docs/benchmarks/holdout-1000/run-catalog.json')",
+          "description": "Parámetros efectivos de los 19 experimentos consolidados."
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Benchmark RAG jurídico"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **Mejor punto observado: C15.** Alcanzó **86.29%** de fidelidad factual extremo a extremo con embedding 4B, RAG 8192 y Ollama 16384; completó 1000/1.000 casos.\n- **No hay una victoria amplia dentro de 4B.** Las mejores corridas forman una meseta cercana a 86%. Frente a C01, C15 mejora 0.24 puntos, con IC95% [-0.02; 0.49], por lo que esa diferencia no es concluyente.\n- **Mejor 0.6B: C19.** Logró 85.85% con RAG 16384 y Ollama 32768. El 4B líder lo supera por 0.43 puntos (IC95% [0.11; 0.76]).\n- **Decisión recomendada:** usar C15 como candidata de calidad y confirmar una muestra jurídica humana antes de fijarla en producción. C09 queda fuera del ranking porque solo cubre 103/1.000 casos.",
+        "sourceId": "benchmark_summary"
+      },
+      {
+        "id": "definitions",
+        "type": "markdown",
+        "body": "## Qué mide el gráfico\n\n**Accuracy*** es una cobertura factual automática extremo a extremo de 0 a 100: compara el borrador con un caché congelado de hechos extraídos de los PDFs y unido por `case_number`, nombre, SHA-256 y hash del prompt. Los fallos y faltantes valen cero. El prompt solo define qué datos del PDF fueron revelados al sistema; no se usa como verdad de referencia. **Precision*** penaliza normas, fechas, plazos, expedientes y referencias de artículos adicionales; **Recall*** mide cuáles de esos identificadores se recuperaron. No detectan toda invención semántica. El asterisco indica que son métricas automáticas, no una evaluación jurídica humana.",
+        "sourceId": "benchmark_summary"
+      },
+      {
+        "id": "accuracy_chart",
+        "type": "chart",
+        "chartId": "accuracy_by_case"
+      },
+      {
+        "id": "interpretation",
+        "type": "markdown",
+        "body": "## La calidad se estabiliza cerca de 86%\n\nEl aumento de contexto no mejora de forma monotónica. Con embedding 4B, RAG 8.192 y Ollama 16.384 produce el mayor valor observado (C15), pero C01, C02, C03, C14 y C16 permanecen estadísticamente muy próximos. En 0.6B, aumentar Ollama de 8.192 a 32.768 tampoco garantiza una mejora; la mejor combinación completa es C19. El principal deterioro no provino del tamaño de contexto sino de perfiles restrictivos que generaron fallos: C04 tuvo 16 y C06 tuvo 86.",
+        "sourceId": "benchmark_summary"
+      },
+      {
+        "id": "field_detail",
+        "type": "markdown",
+        "body": "## Qué explica el puntaje de C15\n\nOrganismo 97.7%, objeto 83.4%, dependencia 96.5%, fecha/plazo 63.3%, normas 88.7%, artículos 89.2% y datos críticos 70.6%. Persona/cargo no se puntúa automáticamente porque el caché no contiene ese campo con cobertura suficiente.",
+        "sourceId": "benchmark_summary"
+      },
+      {
+        "id": "runs_table",
+        "type": "table",
+        "tableId": "all_runs"
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## Recomendación para producción\n\n1. **Candidata:** C15 — embedding 4B/2.560, RAG 8.192, Ollama 16.384, `top_k=8`, pool 24 y score mínimo 0.\n2. **Control humano:** revisar una muestra estratificada de los 1.000 pares PDF-output y adjudicar organismo, objeto, cargos, dependencia, plazos, normas, artículos y datos críticos.\n3. **Regla de promoción:** confirmar que C15 conserve la ventaja en Accuracy jurídica y que no aumente las invenciones materiales. Hasta entonces, la recomendación es técnica y provisional.",
+        "sourceId": "benchmark_summary"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Límites que cambian la interpretación\n\n- Se analizaron 19 corridas, pero 18 configuraciones únicas: C02 y C14 son una réplica exacta de parámetros y sus resultados casi idénticos respaldan la repetibilidad.\n- La referencia usada es un caché congelado de hechos extraídos de los 1.000 PDFs y ligado a sus SHA-256; la carpeta binaria original no está actualmente en este checkout.\n- La extracción automática no comprende por completo equivalencias jurídicas ni puede decidir por sí sola si una paráfrasis conserva todos los efectos legales.\n- C09 es parcial (103/1.000) y se muestra para trazabilidad, pero no participa del ranking.\n- F1 se conserva en los datos técnicos, pero se omite del reporte ejecutivo porque no agrega una decisión distinta a Precision y Recall para esta audiencia."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-21T21:23:00-03:00",
+    "status": "ready",
+    "datasets": {
+      "accuracy_by_case": [
+        {
+          "caso": "C15",
+          "accuracy": 86.29,
+          "modelo": "4B",
+          "rag": 8192,
+          "ollama": 16384,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C16",
+          "accuracy": 86.09,
+          "modelo": "4B",
+          "rag": 16384,
+          "ollama": 16384,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C14",
+          "accuracy": 86.05,
+          "modelo": "4B",
+          "rag": 4096,
+          "ollama": 16384,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C02",
+          "accuracy": 86.05,
+          "modelo": "4B",
+          "rag": 4096,
+          "ollama": 16384,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C03",
+          "accuracy": 86.05,
+          "modelo": "4B",
+          "rag": 8192,
+          "ollama": 32768,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C01",
+          "accuracy": 86.05,
+          "modelo": "4B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C11",
+          "accuracy": 86.01,
+          "modelo": "4B",
+          "rag": 2048,
+          "ollama": 32768,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C10",
+          "accuracy": 85.95,
+          "modelo": "4B",
+          "rag": 2048,
+          "ollama": 16384,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C19",
+          "accuracy": 85.85,
+          "modelo": "0.6B",
+          "rag": 16384,
+          "ollama": 32768,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C17",
+          "accuracy": 85.8,
+          "modelo": "0.6B",
+          "rag": 4096,
+          "ollama": 32768,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C18",
+          "accuracy": 85.77,
+          "modelo": "0.6B",
+          "rag": 8192,
+          "ollama": 32768,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C07",
+          "accuracy": 85.69,
+          "modelo": "0.6B",
+          "rag": 3072,
+          "ollama": 16384,
+          "top_k": 12,
+          "score_min": 0.0,
+          "exito": 99.9
+        },
+        {
+          "caso": "C05",
+          "accuracy": 85.65,
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C12",
+          "accuracy": 85.64,
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 16384,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C13",
+          "accuracy": 85.49,
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 32768,
+          "top_k": 8,
+          "score_min": 0.0,
+          "exito": 100.0
+        },
+        {
+          "caso": "C08",
+          "accuracy": 85.46,
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 8,
+          "score_min": 0.55,
+          "exito": 99.7
+        },
+        {
+          "caso": "C04",
+          "accuracy": 84.6,
+          "modelo": "4B",
+          "rag": 4096,
+          "ollama": 16384,
+          "top_k": 5,
+          "score_min": 0.65,
+          "exito": 98.4
+        },
+        {
+          "caso": "C06",
+          "accuracy": 78.58,
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 5,
+          "score_min": 0.65,
+          "exito": 91.4
+        },
+        {
+          "caso": "C09†",
+          "accuracy": 8.78,
+          "modelo": "0.6B",
+          "rag": 1536,
+          "ollama": 8192,
+          "top_k": 3,
+          "score_min": 0.6,
+          "exito": 10.1
+        }
+      ],
+      "all_runs": [
+        {
+          "case": "C01",
+          "case_coverage": "C01 · 1000/1000",
+          "modelo": "4B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R2048/O8192/k8/p24/s0.00",
+          "accuracy": 86.05,
+          "precision": 43.34,
+          "recall": 56.71,
+          "precision_recall": "P 43.34% / R 56.71%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C02",
+          "case_coverage": "C02 · 1000/1000",
+          "modelo": "4B",
+          "rag": 4096,
+          "ollama": 16384,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R4096/O16384/k8/p24/s0.00",
+          "accuracy": 86.05,
+          "precision": 42.61,
+          "recall": 56.62,
+          "precision_recall": "P 42.61% / R 56.62%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C03",
+          "case_coverage": "C03 · 1000/1000",
+          "modelo": "4B",
+          "rag": 8192,
+          "ollama": 32768,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R8192/O32768/k8/p24/s0.00",
+          "accuracy": 86.05,
+          "precision": 42.5,
+          "recall": 56.8,
+          "precision_recall": "P 42.50% / R 56.80%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C04",
+          "case_coverage": "C04 · 1000/1000",
+          "modelo": "4B",
+          "rag": 4096,
+          "ollama": 16384,
+          "top_k": 5,
+          "pool": 15,
+          "score_min": 0.65,
+          "parametros": "4B R4096/O16384/k5/p15/s0.65",
+          "accuracy": 84.6,
+          "precision": 43.26,
+          "recall": 56.23,
+          "precision_recall": "P 43.26% / R 56.23%",
+          "exito": 98.4,
+          "cobertura": "1000/1000 · éxito 98.4%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C05",
+          "case_coverage": "C05 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "0.6B R2048/O8192/k8/p24/s0.00",
+          "accuracy": 85.65,
+          "precision": 44.89,
+          "recall": 55.76,
+          "precision_recall": "P 44.89% / R 55.76%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C06",
+          "case_coverage": "C06 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 5,
+          "pool": 15,
+          "score_min": 0.65,
+          "parametros": "0.6B R2048/O8192/k5/p15/s0.65",
+          "accuracy": 78.58,
+          "precision": 45.67,
+          "recall": 51.99,
+          "precision_recall": "P 45.67% / R 51.99%",
+          "exito": 91.4,
+          "cobertura": "1000/1000 · éxito 91.4%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C07",
+          "case_coverage": "C07 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 3072,
+          "ollama": 16384,
+          "top_k": 12,
+          "pool": 36,
+          "score_min": 0.0,
+          "parametros": "0.6B R3072/O16384/k12/p36/s0.00",
+          "accuracy": 85.69,
+          "precision": 44.47,
+          "recall": 55.58,
+          "precision_recall": "P 44.47% / R 55.58%",
+          "exito": 99.9,
+          "cobertura": "1000/1000 · éxito 99.9%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C08",
+          "case_coverage": "C08 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 8192,
+          "top_k": 8,
+          "pool": 40,
+          "score_min": 0.55,
+          "parametros": "0.6B R2048/O8192/k8/p40/s0.55",
+          "accuracy": 85.46,
+          "precision": 44.72,
+          "recall": 55.54,
+          "precision_recall": "P 44.72% / R 55.54%",
+          "exito": 99.7,
+          "cobertura": "1000/1000 · éxito 99.7%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C09",
+          "case_coverage": "C09 · 103/1000",
+          "modelo": "0.6B",
+          "rag": 1536,
+          "ollama": 8192,
+          "top_k": 3,
+          "pool": 12,
+          "score_min": 0.6,
+          "parametros": "0.6B R1536/O8192/k3/p12/s0.60",
+          "accuracy": 8.78,
+          "precision": 53.89,
+          "recall": 6.49,
+          "precision_recall": "P 53.89% / R 6.49%",
+          "exito": 10.1,
+          "cobertura": "103/1000 · éxito 10.1%",
+          "estado": "Parcial; no rankea"
+        },
+        {
+          "case": "C10",
+          "case_coverage": "C10 · 1000/1000",
+          "modelo": "4B",
+          "rag": 2048,
+          "ollama": 16384,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R2048/O16384/k8/p24/s0.00",
+          "accuracy": 85.95,
+          "precision": 43.01,
+          "recall": 56.64,
+          "precision_recall": "P 43.01% / R 56.64%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C11",
+          "case_coverage": "C11 · 1000/1000",
+          "modelo": "4B",
+          "rag": 2048,
+          "ollama": 32768,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R2048/O32768/k8/p24/s0.00",
+          "accuracy": 86.01,
+          "precision": 43.38,
+          "recall": 56.79,
+          "precision_recall": "P 43.38% / R 56.79%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C12",
+          "case_coverage": "C12 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 16384,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "0.6B R2048/O16384/k8/p24/s0.00",
+          "accuracy": 85.64,
+          "precision": 44.7,
+          "recall": 55.68,
+          "precision_recall": "P 44.70% / R 55.68%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C13",
+          "case_coverage": "C13 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 2048,
+          "ollama": 32768,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "0.6B R2048/O32768/k8/p24/s0.00",
+          "accuracy": 85.49,
+          "precision": 44.7,
+          "recall": 55.56,
+          "precision_recall": "P 44.70% / R 55.56%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C14",
+          "case_coverage": "C14 · 1000/1000",
+          "modelo": "4B",
+          "rag": 4096,
+          "ollama": 16384,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R4096/O16384/k8/p24/s0.00",
+          "accuracy": 86.05,
+          "precision": 42.89,
+          "recall": 56.64,
+          "precision_recall": "P 42.89% / R 56.64%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C15",
+          "case_coverage": "C15 · 1000/1000",
+          "modelo": "4B",
+          "rag": 8192,
+          "ollama": 16384,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R8192/O16384/k8/p24/s0.00",
+          "accuracy": 86.29,
+          "precision": 42.94,
+          "recall": 57.1,
+          "precision_recall": "P 42.94% / R 57.10%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C16",
+          "case_coverage": "C16 · 1000/1000",
+          "modelo": "4B",
+          "rag": 16384,
+          "ollama": 16384,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "4B R16384/O16384/k8/p24/s0.00",
+          "accuracy": 86.09,
+          "precision": 42.62,
+          "recall": 56.97,
+          "precision_recall": "P 42.62% / R 56.97%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C17",
+          "case_coverage": "C17 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 4096,
+          "ollama": 32768,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "0.6B R4096/O32768/k8/p24/s0.00",
+          "accuracy": 85.8,
+          "precision": 44.02,
+          "recall": 56.04,
+          "precision_recall": "P 44.02% / R 56.04%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C18",
+          "case_coverage": "C18 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 8192,
+          "ollama": 32768,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "0.6B R8192/O32768/k8/p24/s0.00",
+          "accuracy": 85.77,
+          "precision": 44.28,
+          "recall": 55.95,
+          "precision_recall": "P 44.28% / R 55.95%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        },
+        {
+          "case": "C19",
+          "case_coverage": "C19 · 1000/1000",
+          "modelo": "0.6B",
+          "rag": 16384,
+          "ollama": 32768,
+          "top_k": 8,
+          "pool": 24,
+          "score_min": 0.0,
+          "parametros": "0.6B R16384/O32768/k8/p24/s0.00",
+          "accuracy": 85.85,
+          "precision": 44.3,
+          "recall": 55.96,
+          "precision_recall": "P 44.30% / R 55.96%",
+          "exito": 100.0,
+          "cobertura": "1000/1000 · éxito 100.0%",
+          "estado": "Completo"
+        }
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "benchmark_summary",
+      "label": "Resumen recalculado de las 19 corridas",
+      "path": "docs/benchmarks/holdout-1000/results/benchmark-summary.csv",
+      "query": {
+        "engine": "duckdb",
+        "language": "sql",
+        "sql": "SELECT * FROM read_csv_auto('docs/benchmarks/holdout-1000/results/benchmark-summary.csv')",
+        "description": "Une cada output con el PDF por caso, nombre y SHA-256; calcula fidelidad factual y afirmaciones materiales.",
+        "filters": [
+          "1.000 casos esperados por corrida",
+          "holdout-prompt-v2; seed 20260812",
+          "PDFs del holdout no incluidos en los índices RAG",
+          "fallos y faltantes puntúan cero en la métrica extremo a extremo"
+        ],
+        "metric_definitions": {
+          "Accuracy proxy E2E": "Promedio con igual peso de los campos factuales aplicables extraídos del PDF y revelados en la solicitud; fallos y faltantes valen cero.",
+          "Precision proxy": "Afirmaciones materiales correctas sobre todas las afirmaciones materiales del output.",
+          "Recall proxy": "Afirmaciones materiales recuperadas sobre todas las afirmaciones materiales esperadas."
+        },
+        "executed_at": "2026-08-21T21:23:00-03:00"
+      }
+    },
+    {
+      "id": "run_catalog",
+      "label": "Catálogo versionado de parámetros",
+      "path": "docs/benchmarks/holdout-1000/run-catalog.json",
+      "query": {
+        "engine": "duckdb",
+        "language": "sql",
+        "sql": "SELECT * FROM read_json_auto('docs/benchmarks/holdout-1000/run-catalog.json')",
+        "description": "Parámetros efectivos de los 19 experimentos consolidados."
+      }
+    }
+  ]
+}
