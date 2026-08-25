@@ -1,0 +1,166 @@
+{
+  "schema": "benchmark-v2/remote-artifact-inventory/v1",
+  "generated_at_utc": "2026-08-25T15:21:46Z",
+  "root": {
+    "path": "C:\\Users\\Uriel Sabugo\\AppData\\Local\\Temp\\benchmark-v2-remote-20260825",
+    "exists": true
+  },
+  "output_dir": "C:\\Users\\Uriel Sabugo\\Desktop\\GitHub\\legal-AI-infraestructure\\benchmark_v2\\results\\remote-artifact-inventory-20260825",
+  "top_level_files": {
+    "manifest": {
+      "present": true,
+      "rows": 1000,
+      "columns": [
+        "case_id",
+        "prompt_file",
+        "source_pdf",
+        "source_sha256",
+        "pages",
+        "extracted_chars",
+        "target_identifier_redacted",
+        "organization",
+        "objective",
+        "facts",
+        "operative_requirements",
+        "quality_status"
+      ],
+      "quality_status_counts": {
+        "PASS": 1000
+      },
+      "sha256": "a24587b70b97973cdb9f03bd8d188d7e21f54bde84957eb9d3aaf187c57eb04e",
+      "bytes": 244799
+    },
+    "gold_facts": {
+      "present": true,
+      "records": 1000,
+      "invalid_lines": 0,
+      "sha256": "6b477c37c21219fdf45e1f1946e59a609a232b7872825d1dc71c3d8575f96d61",
+      "bytes": 8381466
+    },
+    "prompts": {
+      "referenced_by_manifest": 1000,
+      "present_on_disk": 1,
+      "present_names": [
+        "prompt-0001-200924.md"
+      ]
+    }
+  },
+  "runs": [
+    {
+      "name": "benchmark-1000-8192-v4",
+      "relative_path": "benchmark-1000-8192-v4",
+      "detected": true,
+      "configuration": {
+        "run_id": "benchmark1000-8192-v4",
+        "requested_cases": 1000,
+        "start_case": 1,
+        "top_k": 8,
+        "minimum_score": 0.0,
+        "api_base_url": "http://127.0.0.1:8000",
+        "started_at": "2026-08-14T14:09:56.581026+00:00",
+        "execution": "sequential_monoslot"
+      },
+      "experiment": {
+        "id": "caso-3-8192-v4",
+        "embedding_model": "qwen3-embedding:4b-q4_K_M",
+        "dimensions": 2560,
+        "ollama_context_length": 32768,
+        "rag_context_tokens": 8192,
+        "rag_context_bytes": 65536,
+        "output_tokens": 3072,
+        "minimum_score": 0.0
+      },
+      "progress": {
+        "completed": 1000,
+        "succeeded": 1000,
+        "failed": 0,
+        "total": 1000
+      },
+      "counts": {
+        "case_files": 1000,
+        "unparseable_case_files": 0,
+        "result_records": 1000,
+        "invalid_result_lines": 0,
+        "summary_rows": 1000,
+        "failed_attempt_entries": 1,
+        "runner_log_lines": 1000
+      },
+      "status_distribution": {
+        "SUCCEEDED": 1000
+      },
+      "runner_log_last_line": "case=1000 status=SUCCEEDED completed=1000/1000 total_ms=6050",
+      "file_digests": {
+        "compose.benchmark.yaml": {
+          "present": true,
+          "bytes": 215,
+          "sha256": "7f98a773e8d1a25e7971b1e7b48e1c21418dff2700163d730b2bcfc2888013a2"
+        },
+        "configuration.json": {
+          "present": true,
+          "bytes": 431,
+          "sha256": "c8aad0ffe617a65375e6cc8b853a6f702f562f5a94c4ce0465ac8e9e53c05e15"
+        },
+        "experiment.yml": {
+          "present": true,
+          "bytes": 417,
+          "sha256": "845a3fbe6db00cda54f1a14d905395f103742b6ca644d531e747755d479d3091"
+        },
+        "progress.json": {
+          "present": true,
+          "bytes": 196,
+          "sha256": "b6d18f10e93a31f3ad24b3874475ce84bcd1bac35a70d24dafff546943db23e8"
+        },
+        "results.jsonl": {
+          "present": true,
+          "bytes": 23701744,
+          "sha256": "3f9a3b1c52e6371244dfd7dc20011f390be88f2501f9fb42b4835a10283fa2ac"
+        },
+        "runner.log": {
+          "present": true,
+          "bytes": 60279,
+          "sha256": "fafc6355fe1b28175293bcda7ea5df034acea62a9bc0b5e1007984c6cde91032"
+        },
+        "summary.csv": {
+          "present": true,
+          "bytes": 84679,
+          "sha256": "c3996cae77c29c4c60ddb09a8eba536b634fa03c3cf3891785d76f58e82c8b07"
+        }
+      },
+      "manifest_linkage": {
+        "checked": true,
+        "shared_case_numbers": 1000,
+        "pdf_name_mismatches": 0,
+        "sha256_mismatches": 0
+      },
+      "cross_source": {
+        "shared_case_numbers": 1000,
+        "cross_source_fields_compared": [
+          "external_id",
+          "status",
+          "http_status",
+          "rag_run_id",
+          "retrieved",
+          "selected"
+        ],
+        "cross_source_mismatches": 0,
+        "mismatch_examples": []
+      }
+    }
+  ],
+  "reconciliation": {
+    "verdict": "CONSISTENT",
+    "issue_count": 0,
+    "issues": [],
+    "notes": [],
+    "manifest_vs_gold_facts": {
+      "manifest_present": true,
+      "gold_facts_present": true,
+      "manifest_pdfs": 1000,
+      "gold_fact_records": 1000,
+      "covered_pdfs": 1000,
+      "missing_in_gold_facts": [],
+      "unexpected_in_gold_facts": [],
+      "sha256_mismatches": []
+    }
+  }
+}

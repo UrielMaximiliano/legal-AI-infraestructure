@@ -1,0 +1,14 @@
+metric,value
+schema_version,benchmark-v2-legal-core-1
+generated_at_utc,2026-08-25T15:19:34.133331+00:00
+run_dir,C:\Users\URIELS~1\AppData\Local\Temp\benchmark-v2-remote-20260825\benchmark-1000-8192-v4
+case_count,1
+requested_case_count,1
+join_errors,0
+legal_pass_count,0
+legal_pass_rate,0.0
+prompt_coverage_rate,0.7647058823529411
+atomic_claim_recall,1.0
+critical_contradiction_rate,0.0
+critical_omission_rate,0.0
+unsupported_addition_rate,1.0

@@ -1,0 +1,22 @@
+{
+  "atomic_claim_recall": 0.8670165945165944,
+  "case_count": 10,
+  "critical_contradiction_rate": 0.2,
+  "critical_omission_rate": 0.9,
+  "generated_at_utc": "2026-08-25T15:16:53.236622+00:00",
+  "integrity": {
+    "join_errors": [],
+    "status": "FULL"
+  },
+  "join_errors": 0,
+  "legal_pass_count": 0,
+  "legal_pass_rate": 0.0,
+  "prompt_coverage_rate": 0.827036541889483,
+  "requested_case_count": 10,
+  "run_dir": "C:\\Users\\Uriel Sabugo\\AppData\\Local\\Temp\\benchmark-v2-remote-20260825\\benchmark-1000-8192-v4",
+  "schema_version": "benchmark-v2-legal-core-1",
+  "source_faithfulness_status_counts": {
+    "NOT_RECONSTRUCTABLE": 10
+  },
+  "unsupported_addition_rate": 0.9
+}

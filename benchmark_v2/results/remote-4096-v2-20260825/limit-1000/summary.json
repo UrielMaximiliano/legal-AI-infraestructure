@@ -1,0 +1,22 @@
+{
+  "atomic_claim_recall": 0.8729522149248777,
+  "case_count": 1000,
+  "critical_contradiction_rate": 0.158,
+  "critical_omission_rate": 0.779,
+  "generated_at_utc": "2026-08-25T15:16:37.704290+00:00",
+  "integrity": {
+    "join_errors": [],
+    "status": "FULL"
+  },
+  "join_errors": 0,
+  "legal_pass_count": 15,
+  "legal_pass_rate": 0.015,
+  "prompt_coverage_rate": 0.8141035225139432,
+  "requested_case_count": 1000,
+  "run_dir": "C:\\Users\\URIELS~1\\AppData\\Local\\Temp\\benchmark-v2-remote-20260825\\benchmark-1000-4096-v2",
+  "schema_version": "benchmark-v2-legal-core-1",
+  "source_faithfulness_status_counts": {
+    "NOT_RECONSTRUCTABLE": 1000
+  },
+  "unsupported_addition_rate": 0.908
+}

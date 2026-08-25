@@ -1,0 +1,13 @@
+{
+  "generated_at_utc": "2026-08-25T15:17:59.243838+00:00",
+  "input": {
+    "gold_path": "C:\\Users\\URIELS~1\\AppData\\Local\\Temp\\benchmark-v2-remote-20260825\\pdf-gold-facts.auto.jsonl",
+    "gold_sha256": "6b477c37c21219fdf45e1f1946e59a609a232b7872825d1dc71c3d8575f96d61",
+    "run_dir": "C:\\Users\\URIELS~1\\AppData\\Local\\Temp\\benchmark-v2-remote-20260825\\benchmark-1000-8192-v4"
+  },
+  "limit": 1000,
+  "output": {
+    "case_metrics_sha256": "19d06a198e10adc2768efd34c90a9992ef5280c15a14aab642884a1789d804f5"
+  },
+  "schema_version": "benchmark-v2-legal-core-1"
+}
