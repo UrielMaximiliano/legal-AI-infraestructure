@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:benchmark-v2:structure-score:v1",
+  "title": "Benchmark v2 structural and utility score",
+  "description": "Independent diagnostics; no aggregate legal score is defined.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "json_valid",
+    "schema_valid",
+    "format_valid",
+    "completeness",
+    "citation_precision",
+    "evidence_coverage",
+    "utility_score",
+    "traceability"
+  ],
+  "properties": {
+    "json_valid": {"type": "boolean"},
+    "schema_valid": {"type": "boolean"},
+    "format_valid": {"type": ["boolean", "null"]},
+    "completeness": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "citation_precision": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "citation_recall": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "evidence_coverage": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "invented_citation_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "utility_score": {"type": ["number", "null"]},
+    "latency_ms": {"type": ["number", "null"], "minimum": 0},
+    "cost": {"type": ["number", "object", "null"]},
+    "traceability": {"type": "object"}
+  }
+}
