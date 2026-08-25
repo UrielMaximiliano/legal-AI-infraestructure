@@ -6,10 +6,10 @@
     "summary": "benchmark_v2\\results\\diagnostic-20260825\\summary.json"
   },
   "code": {
-    "commit": "a9a5519685c967840fac6bb368caaa357ac0fd23"
+    "commit": "52f1f765b77d2c5668c8f880a268b78737fdffa0"
   },
   "expected_count": 1000,
-  "generated_at_utc": "2026-08-25T14:21:24.649441Z",
+  "generated_at_utc": "2026-08-25T14:25:12.952471Z",
   "input": {
     "path": null,
     "records_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
