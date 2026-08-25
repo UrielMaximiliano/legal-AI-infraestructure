@@ -92,4 +92,26 @@ La prueba de contrato en [`tests/data_contract_test.py`](tests/data_contract_tes
 verifica determinismo, cobertura, formatos sin dependencia opcional, cache por
 hash y dimensiones múltiples.
 
+## Runner, estados y reporte
+
+El runner independiente [`scripts/run_benchmark.py`](scripts/run_benchmark.py)
+lee JSONL/CSV (Parquet si existe una dependencia opcional), calcula cada
+dimensión por caso y escribe `metrics.jsonl`, `metrics.csv`, un manifest y una
+plantilla de doble revisión humana. No calcula un score legal compuesto.
+
+```powershell
+& 'apps/api/.venv/Scripts/python.exe' benchmark_v2/scripts/run_benchmark.py `
+  --cases <casos.jsonl> --out-dir benchmark_v2/results/run-<id> `
+  --run-id <id> --expected-count 1000 --seed 20260825 --human-sample 100
+```
+
+`FULL` exige cobertura exacta de `expected_count`; `PARTIAL` conserva una
+corrida incompleta; `NOT_CALCULABLE` indica que falta un artefacto o referencia
+para producir una métrica honesta. Las salidas no reemplazan un faltante por
+cero. El reporte en español se genera con
+[`scripts/generate_report.py`](scripts/generate_report.py) y los gráficos se
+generan con [`scripts/plot_results.py`](scripts/plot_results.py); si no hay
+métricas calculables, el gráfico producido es un marcador explícito
+`NOT_CALCULABLE`.
+
 

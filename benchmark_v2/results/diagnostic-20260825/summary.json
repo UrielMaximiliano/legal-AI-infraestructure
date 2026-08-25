@@ -1,0 +1,39 @@
+{
+  "artifacts": {
+    "human_eval_template": "benchmark_v2\\results\\diagnostic-20260825\\human_eval_template.jsonl",
+    "metrics_csv": "benchmark_v2\\results\\diagnostic-20260825\\metrics.csv",
+    "metrics_jsonl": "benchmark_v2\\results\\diagnostic-20260825\\metrics.jsonl"
+  },
+  "dimensions": {
+    "claims": {},
+    "faithfulness": {},
+    "legal_fields": {},
+    "retrieval": {},
+    "semantic": {},
+    "structure": {}
+  },
+  "expected_count": 1000,
+  "input": {
+    "path": null,
+    "sha256": null
+  },
+  "leakage_checks": {
+    "candidate_contains_reference": 0,
+    "checks_not_calculable": true,
+    "duplicate_case_ids": [],
+    "duplicate_count": 0,
+    "invalid_joins": 0,
+    "reference_text_checks": 0,
+    "status": "NOT_CALCULABLE"
+  },
+  "missing_count": 1000,
+  "not_calculable_reasons": [
+    "input_cases_unavailable"
+  ],
+  "observed_count": 0,
+  "opaque_overall_score": false,
+  "overall_score": null,
+  "run_id": "diagnostic-20260825",
+  "schema_version": "benchmark-v2.run-summary.v1",
+  "status": "NOT_CALCULABLE"
+}

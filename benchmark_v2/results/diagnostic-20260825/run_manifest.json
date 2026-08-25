@@ -1,0 +1,23 @@
+{
+  "artifacts": {
+    "human_eval_template": "benchmark_v2\\results\\diagnostic-20260825\\human_eval_template.jsonl",
+    "metrics_csv": "benchmark_v2\\results\\diagnostic-20260825\\metrics.csv",
+    "metrics_jsonl": "benchmark_v2\\results\\diagnostic-20260825\\metrics.jsonl",
+    "summary": "benchmark_v2\\results\\diagnostic-20260825\\summary.json"
+  },
+  "code": {
+    "commit": "a9a5519685c967840fac6bb368caaa357ac0fd23"
+  },
+  "expected_count": 1000,
+  "generated_at_utc": "2026-08-25T14:21:24.649441Z",
+  "input": {
+    "path": null,
+    "records_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "sha256": null
+  },
+  "observed_count": 0,
+  "run_id": "diagnostic-20260825",
+  "schema_version": "benchmark-v2.run-manifest.v1",
+  "seed": 20260825,
+  "status": "NOT_CALCULABLE"
+}
