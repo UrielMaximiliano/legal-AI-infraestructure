@@ -77,3 +77,14 @@ def test_runner_missing_input_is_not_calculable_and_has_no_metrics(tmp_path: Pat
     assert summary["overall_score"] is None
     assert "input_cases_not_found" in summary["not_calculable_reasons"][0]
     assert (tmp_path / "missing-run" / "metrics.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_runner_does_not_publish_duplicate_case_ids_as_full(tmp_path: Path) -> None:
+    cases_path = tmp_path / "duplicate.jsonl"
+    write_jsonl(cases_path, [_case("same", candidate="respuesta"), _case("same", candidate="respuesta")])
+
+    summary = run_benchmark(cases_path, out_dir=tmp_path / "duplicate-run", expected_count=2)
+
+    assert summary["status"] == NOT_CALCULABLE
+    assert summary["leakage_checks"]["duplicate_count"] == 1
+    assert "leakage_or_join_assertion_failed" in summary["not_calculable_reasons"]

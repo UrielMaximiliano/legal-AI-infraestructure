@@ -387,7 +387,16 @@ def run_benchmark(
 
     observed_count = len(result_rows)
     missing_count = max(0, expected_count - observed_count) if expected_count is not None else None
-    if input_error is not None or observed_count == 0:
+    leakage = _leakage_checks(rows, result_rows) if result_rows else {
+        "duplicate_case_ids": [],
+        "duplicate_count": 0,
+        "invalid_joins": 0,
+        "candidate_contains_reference": 0,
+        "reference_text_checks": 0,
+        "status": "NOT_CALCULABLE",
+        "checks_not_calculable": True,
+    }
+    if input_error is not None or observed_count == 0 or leakage["status"] == "FAIL":
         status = NOT_CALCULABLE
     elif expected_count is not None and observed_count == expected_count:
         status = FULL
@@ -399,15 +408,6 @@ def run_benchmark(
         counts = Counter(_status(row[dimension]) for row in result_rows)
         dimensions[dimension] = dict(sorted(counts.items()))
 
-    leakage = _leakage_checks(rows, result_rows) if result_rows else {
-        "duplicate_case_ids": [],
-        "duplicate_count": 0,
-        "invalid_joins": 0,
-        "candidate_contains_reference": 0,
-        "reference_text_checks": 0,
-        "status": "NOT_CALCULABLE",
-        "checks_not_calculable": True,
-    }
     reasons: list[str] = []
     if input_error:
         reasons.append(input_error)
