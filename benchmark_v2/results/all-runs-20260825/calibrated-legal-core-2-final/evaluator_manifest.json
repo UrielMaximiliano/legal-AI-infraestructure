@@ -1,0 +1,9 @@
+{
+  "bootstrap_seed": 20260825,
+  "evaluator_path": "C:\\Users\\Uriel Sabugo\\Desktop\\GitHub\\legal-AI-infraestructure\\benchmark_v2\\evaluators\\legal_core\\evaluator.py",
+  "evaluator_sha256": "13644bdc6bc0761d6d22b59dff5c4013132442d8ec56c3258075f524b0893166",
+  "evaluator_version": "benchmark-v2-legal-core-2-calibrated",
+  "gold_sha256": "6b477c37c21219fdf45e1f1946e59a609a232b7872825d1dc71c3d8575f96d61",
+  "judge_model": null,
+  "rules_version": "typed-critical-v2-template-aware"
+}

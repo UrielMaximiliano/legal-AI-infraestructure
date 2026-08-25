@@ -1,0 +1,26 @@
+{
+  "appendix_count": 64,
+  "bootstrap_resamples": 10000,
+  "bootstrap_seed": 20260825,
+  "continuous_controlled_rows": 154,
+  "continuous_test": "paired case bootstrap percentile",
+  "evaluator_hashes_in_reconciliation": [
+    "13644bdc6bc0761d6d22b59dff5c4013132442d8ec56c3258075f524b0893166"
+  ],
+  "excluded_classifications": [
+    "SMOKE",
+    "DIAGNOSTIC",
+    "PARTIAL",
+    "ARCHIVE_DUPLICATE",
+    "RECOVERED_COPY",
+    "INVALID"
+  ],
+  "legalpass_test": "McNemar exact two-sided on paired case_id values",
+  "multiple_comparison_correction": "Holm-Bonferroni",
+  "pairwise_legalpass_comparisons": 136,
+  "primary_classification": "PRIMARY_FULL_1000",
+  "primary_count": 17,
+  "replicate_count": 0,
+  "retrieval_policy": "NOT_RECONSTRUCTABLE when historical chunk text is absent; retrieval metrics excluded from principal inference",
+  "schema_version": "benchmark-v2-statistics-manifest-2"
+}

@@ -48,8 +48,16 @@ def test_date_mutation_is_a_critical_contradiction():
     assert result["legal_pass"] is False
 
 
-def test_forbidden_closing_is_an_unsupported_addition():
-    result = evaluate_case(_case("MINISTERIO DE JUSTICIA Y DERECHOS HUMANOS prorroga designaciones por 180 dias. COMUNIQUESE, PUBLIQUESE y ARCHIVADO DIGITALMENTE."), _gold())
+def test_standard_decree_closing_is_not_an_unsupported_addition_by_default():
+    result = evaluate_case(_case("MINISTERIO DE JUSTICIA Y DERECHOS HUMANOS prorroga designaciones por 180 dias desde el 30 de diciembre de 2011. COMUNIQUESE, PUBLIQUESE y ARCHIVADO DIGITALMENTE."), _gold())
+    assert result["unsupported_additions"]["count"] == 0
+    assert result["legal_pass"] is True
+
+
+def test_contract_can_prohibit_standard_decree_closing():
+    gold = _gold()
+    gold["prohibited_formulas"] = ["comuniquese"]
+    result = evaluate_case(_case("MINISTERIO DE JUSTICIA Y DERECHOS HUMANOS prorroga designaciones por 180 dias. COMUNIQUESE."), gold)
     assert result["unsupported_additions"]["count"] >= 1
     assert result["legal_pass"] is False
 
@@ -83,6 +91,16 @@ def test_negation_mutation_is_a_contradiction():
     case["input"]["prompt_text"] = "No se autoriza el tramite."
     result = evaluate_case(case, gold)
     assert result["contradictions"]["critical_count"] >= 1
+
+
+def test_deontic_modality_mutation_is_a_contradiction():
+    gold = _gold()
+    gold["field_candidates"]["objeto"] = "La autoridad debe autorizar el tramite"
+    case = _case("La autoridad puede autorizar el tramite.")
+    case["input"]["prompt_text"] = "La autoridad debe autorizar el tramite."
+    result = evaluate_case(case, gold)
+    assert any(item["kind"] == "deontic_modality" for item in result["contradictions"]["items"])
+    assert result["legal_pass"] is False
 
 
 def test_exception_mutation_is_an_omission():

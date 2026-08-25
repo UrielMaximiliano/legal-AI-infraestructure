@@ -1,0 +1,9 @@
+artifact_count,classification,evaluated_artifact_count,evaluated_case_count,in_primary_inference
+17,PRIMARY_FULL_1000,17,17000,True
+0,REPLICATE_FULL_1000,0,0,False
+24,SMOKE,24,444,False
+32,DIAGNOSTIC,32,510,False
+7,PARTIAL,7,1199,False
+0,ARCHIVE_DUPLICATE,0,0,False
+0,RECOVERED_COPY,0,0,False
+1,INVALID,1,1,False

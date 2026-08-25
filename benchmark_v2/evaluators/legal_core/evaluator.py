@@ -16,6 +16,8 @@ from typing import Any
 
 CALCULATED = "CALCULATED"
 NOT_RECONSTRUCTABLE = "NOT_RECONSTRUCTABLE"
+EVALUATOR_VERSION = "benchmark-v2-legal-core-2-calibrated"
+RULES_VERSION = "typed-critical-v2-template-aware"
 
 _STOPWORDS = {
     "a", "al", "con", "como", "de", "del", "desde", "el", "en", "entre",
@@ -50,10 +52,10 @@ _EXPEDIENTE_RE = re.compile(
 _AMOUNT_RE = re.compile(r"(?:\b(?:monto|importe|suma)\s*(?:de\s*)?|\$\s*)(\d[\d.,]*)\b", re.IGNORECASE)
 _DNI_RE = re.compile(r"\b(?:dni|d\.n\.i\.?|documento(?:\s+nacional\s+de\s+identidad)?)\s*(?:nro?\.?\s*)?(\d{6,9})\b", re.IGNORECASE)
 _CITATION_RE = re.compile(r"\bSRC-\d{3}\b", re.IGNORECASE)
-_FORBIDDEN_PATTERNS = (
-    ("prohibited_signature_or_closing", re.compile(r"\b(?:firma|firmado|archivad[oa]|archivado digitalmente)\b", re.IGNORECASE)),
-    ("prohibited_publication_formula", re.compile(r"\b(?:publ[ií]quese|comun[ií]quese|d[eé]se a la direcci[oó]n nacional del registro oficial)\b", re.IGNORECASE)),
-    ("invented_authority_date", re.compile(r"\bdado en la casa de gobierno\b", re.IGNORECASE)),
+_TEMPLATE_FORMULAS = (
+    ("signature_or_closing", re.compile(r"\b(?:firma|firmado|archivad[oa]|archivado digitalmente)\b", re.IGNORECASE)),
+    ("publication_formula", re.compile(r"\b(?:publ[ií]quese|comun[ií]quese|d[eé]se a la direcci[oó]n nacional del registro oficial)\b", re.IGNORECASE)),
+    ("authority_date_formula", re.compile(r"\bdado en la casa de gobierno\b", re.IGNORECASE)),
 )
 _POLARITY_PAIRS = (
     (re.compile(r"\bautoriza(?:r|do|da)?\b", re.IGNORECASE), re.compile(r"\bproh[ií]be|prohibir|prohibido\b", re.IGNORECASE)),
@@ -269,7 +271,41 @@ def _polarity_contradictions(gold_text: str, candidate_text: str) -> list[dict[s
         result.append({"kind": "negation", "expected": gold_negated.group(0), "candidate": "affirmative"})
     elif candidate_negated and not gold_negated:
         result.append({"kind": "negation", "expected": "affirmative", "candidate": candidate_negated.group(0)})
+    obligation = re.compile(r"\b(?:debe|deber[aá]|obligad[oa])\b", re.IGNORECASE)
+    permission = re.compile(r"\b(?:puede|podr[aá]|autoriza|permite)\b", re.IGNORECASE)
+    prohibition = re.compile(r"\b(?:proh[ií]be|prohibir|prohibido|no\s+(?:puede|podr[aá]|autoriza|permite))\b", re.IGNORECASE)
+    gold_mode = "obligation" if obligation.search(gold_text) else "prohibition" if prohibition.search(gold_text) else "permission" if permission.search(gold_text) else None
+    candidate_mode = "obligation" if obligation.search(candidate_text) else "prohibition" if prohibition.search(candidate_text) else "permission" if permission.search(candidate_text) else None
+    if gold_mode and candidate_mode and gold_mode != candidate_mode:
+        result.append({"kind": "deontic_modality", "expected": gold_mode, "candidate": candidate_mode})
     return result
+
+
+def _contract_prohibited_formulas(gold: Mapping[str, Any], prompt: str) -> list[tuple[str, re.Pattern[str]]]:
+    """Return only formulas explicitly prohibited by the experiment contract.
+
+    Signature/publication/date formulas are ordinary decree-template language;
+    they are not errors merely because the prompt omitted them.  A benchmark
+    contract may opt into prohibition using ``prohibited_formulas`` or
+    ``template_rules.prohibited_formulas`` in the gold record.
+    """
+
+    raw: Any = gold.get("prohibited_formulas")
+    if raw is None and isinstance(gold.get("template_rules"), Mapping):
+        raw = gold["template_rules"].get("prohibited_formulas")
+    terms = {normalize_text(item) for item in raw} if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)) else set()
+    if re.search(r"\b(?:proh[ií]be|no\s+(?:debe|puede|podr[aá]))\b.{0,80}\b(?:firma|comun[ií]quese|publ[ií]quese|archivad[oa])\b", _strip_accents(prompt), re.IGNORECASE):
+        terms.update({"firma", "comuniquese", "publiquese", "archivado"})
+    patterns: list[tuple[str, re.Pattern[str]]] = []
+    label_terms = {
+        "signature_or_closing": {"firma", "firmado", "archivado", "archivada"},
+        "publication_formula": {"comuniquese", "publiquese", "dese a la direccion nacional del registro oficial"},
+        "authority_date_formula": {"dado en la casa de gobierno"},
+    }
+    for label, pattern in _TEMPLATE_FORMULAS:
+        if label_terms[label] & terms:
+            patterns.append((f"contract_prohibited_{label}", pattern))
+    return patterns
 
 
 def _citation_ids(value: Any) -> set[str]:
@@ -371,7 +407,7 @@ def evaluate_case(case: Mapping[str, Any], gold: Mapping[str, Any]) -> dict[str,
         allowed_typed.update(f"articulo:{int(number)}" for number in raw_articles if str(number).isdigit())
     unsupported_typed = sorted(candidate_typed - allowed_typed)
     unsupported = [{"kind": "unsupported_typed_claim", "text": value, "severity": "critical"} for value in unsupported_typed]
-    for kind, pattern in _FORBIDDEN_PATTERNS:
+    for kind, pattern in _contract_prohibited_formulas(gold, prompt):
         match = pattern.search(_strip_accents(candidate_text))
         if match:
             unsupported.append({"kind": kind, "text": match.group(0), "severity": "critical"})
@@ -405,6 +441,8 @@ def evaluate_case(case: Mapping[str, Any], gold: Mapping[str, Any]) -> dict[str,
         reasons.append("critical_field_failure")
     case_id = case.get("external_id") or case_input.get("external_id") or case.get("case_number")
     return {
+        "evaluator_version": EVALUATOR_VERSION,
+        "rules_version": RULES_VERSION,
         "case_id": str(case_id or ""),
         "external_id": case_input.get("external_id"),
         "reference_pdf": gold.get("reference_pdf"),

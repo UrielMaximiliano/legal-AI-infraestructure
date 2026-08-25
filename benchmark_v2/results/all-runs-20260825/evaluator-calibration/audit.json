@@ -1,0 +1,153 @@
+{
+  "allowed_information_set": [
+    "prompt",
+    "gold field candidates/facts",
+    "explicit contract/template rules"
+  ],
+  "evaluator_sha256": "13644bdc6bc0761d6d22b59dff5c4013132442d8ec56c3258075f524b0893166",
+  "evaluator_version": "benchmark-v2-legal-core-2-calibrated",
+  "omission_field_counts": {
+    "articulos_resolutivos": 49,
+    "dependencia": 52,
+    "fecha_plazo_vigencia": 3,
+    "normas_citadas": 79,
+    "objeto": 10,
+    "organismo": 10
+  },
+  "recompute_required": true,
+  "retrieval_status": "NOT_RECONSTRUCTABLE when historical chunk text is absent",
+  "rules_version": "typed-critical-v2-template-aware",
+  "sample_size_evaluated": 40,
+  "sample_size_requested": 40,
+  "sanity_all_pass": true,
+  "sanity_challenges": [
+    {
+      "challenge": "original_equals_original",
+      "contradiction_kinds": [],
+      "expected_pass": true,
+      "legal_pass_reasons": [],
+      "meets_expectation": true,
+      "observed_pass": true,
+      "unsupported_kinds": []
+    },
+    {
+      "challenge": "legal_paraphrase",
+      "contradiction_kinds": [],
+      "expected_pass": true,
+      "legal_pass_reasons": [],
+      "meets_expectation": true,
+      "observed_pass": true,
+      "unsupported_kinds": []
+    },
+    {
+      "challenge": "amount_altered",
+      "contradiction_kinds": [],
+      "expected_pass": false,
+      "legal_pass_reasons": [
+        "unsupported_additions=1"
+      ],
+      "meets_expectation": true,
+      "observed_pass": false,
+      "unsupported_kinds": [
+        "unsupported_typed_claim"
+      ]
+    },
+    {
+      "challenge": "dni_altered",
+      "contradiction_kinds": [
+        "dni"
+      ],
+      "expected_pass": false,
+      "legal_pass_reasons": [
+        "critical_contradictions=1",
+        "unsupported_additions=1"
+      ],
+      "meets_expectation": true,
+      "observed_pass": false,
+      "unsupported_kinds": [
+        "unsupported_typed_claim"
+      ]
+    },
+    {
+      "challenge": "material_date_altered",
+      "contradiction_kinds": [
+        "fecha"
+      ],
+      "expected_pass": false,
+      "legal_pass_reasons": [
+        "critical_omissions=1",
+        "critical_contradictions=1",
+        "unsupported_additions=1"
+      ],
+      "meets_expectation": true,
+      "observed_pass": false,
+      "unsupported_kinds": [
+        "unsupported_typed_claim"
+      ]
+    },
+    {
+      "challenge": "negation_inverted",
+      "contradiction_kinds": [
+        "negation"
+      ],
+      "expected_pass": false,
+      "legal_pass_reasons": [
+        "critical_contradictions=1"
+      ],
+      "meets_expectation": true,
+      "observed_pass": false,
+      "unsupported_kinds": []
+    },
+    {
+      "challenge": "deontic_modality_altered",
+      "contradiction_kinds": [
+        "deontic_modality"
+      ],
+      "expected_pass": false,
+      "legal_pass_reasons": [
+        "critical_contradictions=1"
+      ],
+      "meets_expectation": true,
+      "observed_pass": false,
+      "unsupported_kinds": []
+    },
+    {
+      "challenge": "critical_omission",
+      "contradiction_kinds": [],
+      "expected_pass": false,
+      "legal_pass_reasons": [
+        "critical_omissions=1"
+      ],
+      "meets_expectation": true,
+      "observed_pass": false,
+      "unsupported_kinds": []
+    },
+    {
+      "challenge": "standard_formula_allowed_by_default",
+      "expected_pass": true,
+      "meets_expectation": true,
+      "observed_pass": true,
+      "unsupported_kinds": []
+    },
+    {
+      "challenge": "standard_formula_contract_prohibited",
+      "expected_pass": false,
+      "meets_expectation": true,
+      "observed_pass": false,
+      "unsupported_kinds": [
+        "contract_prohibited_publication_formula"
+      ]
+    }
+  ],
+  "schema_version": "benchmark-v2-evaluator-calibration-1",
+  "strata": {
+    "DIAGNOSTIC": 9,
+    "INVALID": 1,
+    "PARTIAL": 9,
+    "PRIMARY_FULL_1000": 13,
+    "SMOKE": 8
+  },
+  "unsupported_kind_counts": {
+    "unsupported_typed_claim": 41
+  }
+}
