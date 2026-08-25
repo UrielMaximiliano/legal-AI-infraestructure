@@ -1,0 +1,47 @@
+{
+  "schema_version": "benchmark-v2-reconciliation.v1",
+  "task_id": "task_20d7b2a4cef3",
+  "generated_at_utc": "2026-08-25T15:22:17+00:00",
+  "inputs": {
+    "repo_root": "C:\\Users\\Uriel Sabugo\\Desktop\\GitHub\\legal-AI-infraestructure",
+    "remote_dir": "C:\\Users\\Uriel Sabugo\\AppData\\Local\\Temp\\benchmark-v2-remote-20260825",
+    "expected_prompt_manifest_sha256": "26b72644e00ee44aff6fcb492aed616d6d4a438b44ed6d5abed3c5541697a930",
+    "expected_reference_cache_sha256": "6b477c37c21219fdf45e1f1946e59a609a232b7872825d1dc71c3d8575f96d61"
+  },
+  "runs_reconciled": [
+    {
+      "folder": "benchmark-1000-8192-v4",
+      "catalog_case_id": "C03",
+      "outputs_found": 1000,
+      "succeeded": 1000,
+      "failed": 0,
+      "join_mismatches": 0,
+      "missing": [],
+      "latency_p50_observed_ms": 9495.5
+    }
+  ],
+  "findings": [
+    {
+      "check": "perf-v1-scope",
+      "severity": "INFO",
+      "message": "The 004-benchmark-v1 artifact measures API endpoint latency; it is informational and never comparable with generation-fidelity runs.",
+      "details": {}
+    },
+    {
+      "check": "perf-v1-dataset-digest",
+      "severity": "WARN",
+      "message": "V1 performance report dataset digest does not match the current fixture file; regenerate or re-record before citing 004 results.",
+      "details": {
+        "fixture": "tests/fixtures/benchmark_004_dataset.json",
+        "recorded": "efd6ab86f0ec8a146fd0eaaff22e4c801e1d4d30e60d0bc9f459c12d1e132049",
+        "actual": "f82448d036c36208707f3f4a8b28b6819afabd96a1765b7377a681e72626a206"
+      }
+    }
+  ],
+  "counts": {
+    "info": 1,
+    "warn": 1,
+    "block": 0
+  },
+  "status": "WARN"
+}
