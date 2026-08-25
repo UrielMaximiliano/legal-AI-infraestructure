@@ -1,0 +1,41 @@
+{
+  "artifacts_inventoried": 81,
+  "benchmark_recalculation_required": false,
+  "classification_counts": {
+    "DIAGNOSTIC": 32,
+    "INVALID": 1,
+    "PARTIAL": 7,
+    "PRIMARY_FULL_1000": 17,
+    "SMOKE": 24
+  },
+  "config_hash_signature_collision_count": 0,
+  "coverage_status": "COVERAGE_COMPLETE",
+  "folders_not_reconciled": 0,
+  "full_1000_evaluated_ratio": "17/17",
+  "full_1000_evaluated_runs": 17,
+  "full_1000_runs": 17,
+  "full_1000_unique_evaluated_ratio": "16/16",
+  "full_1000_unique_hyperparameter_configs": 16,
+  "local_folder_count": 81,
+  "local_folder_digest": "f2b435a7945e914a91ff4a890ec449711f1134debf0d2833ac096e7d6d190b5d",
+  "misclassified_valid_full_artifacts": [],
+  "not_recorded_fields": [
+    "embedding_context",
+    "chunk_size",
+    "chunk_overlap",
+    "temperature",
+    "seed"
+  ],
+  "omitted_full_configs": [],
+  "remote_folder_digest": "f2b435a7945e914a91ff4a890ec449711f1134debf0d2833ac096e7d6d190b5d",
+  "remote_folders_detected": 81,
+  "remote_local_folder_digest_match": true,
+  "replicate_candidate_configs": [
+    "C02"
+  ],
+  "same_hyperparameters_share_config_hash": true,
+  "source_of_hyperparameters": "remote run-catalog.json reconciled to physical artifact paths",
+  "unique_artifact_ids": 81,
+  "unique_hyperparameter_configs": 18,
+  "unmapped_artifacts": []
+}

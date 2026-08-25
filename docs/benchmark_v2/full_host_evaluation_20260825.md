@@ -23,7 +23,7 @@ Los artefactos físicos no se trataron como experimentos independientes.
 | `INVALID` | 1 | 1 | Excluido |
 | **Total** | **81** | **19.154** | — |
 
-La reconciliación completa está en `benchmark_v2/results/full-host-inventory/artifact_to_logical_run_reconciliation.csv`. El snapshot tiene 19.483 archivos, 862.579.563 bytes y 28 grupos de contenido repetido; esos grupos corresponden principalmente a archivos internos compartidos y no se convirtieron automáticamente en duplicados de experimentos.
+La reconciliación completa está en `benchmark_v2/results/full-host-inventory/artifact_to_logical_run_reconciliation.csv`. La verificación posterior de cobertura encontró 18 vectores únicos de hiperparámetros: 16 FULL y 2 parciales. Las 17 corridas FULL incluyen C02 y C14, que comparten exactamente el mismo vector de hiperparámetros pero tienen outputs distintos; se conservan como corridas separadas y réplica candidata sin `seed` registrada. El detalle está en `docs/benchmark_v2/hyperparameter_coverage_20260825.md`. El snapshot tiene 19.483 archivos, 862.579.563 bytes y 28 grupos de contenido repetido; esos grupos corresponden principalmente a archivos internos compartidos y no se convirtieron automáticamente en duplicados de experimentos.
 
 ## Auditoría de LegalPass
 
