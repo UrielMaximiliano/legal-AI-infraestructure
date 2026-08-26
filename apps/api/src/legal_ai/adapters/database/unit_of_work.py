@@ -32,7 +32,7 @@ from legal_ai.adapters.database.draft_transition_repository import (
 from legal_ai.adapters.database.employee_repository import (
     SQLAlchemyEmployeeRepository,
 )
-from legal_ai.adapters.database.engine import create_engine
+from legal_ai.adapters.database.engine import get_session_factory
 from legal_ai.adapters.database.export_attempt_repository import (
     SQLAlchemyExportAttemptRepository,
 )
@@ -71,10 +71,13 @@ from legal_ai.adapters.database.template_repository import (
 
 
 class UnitOfWork:
-    """Unit of Work managing transactional operations across repositories."""
+    """Unit of Work managing transactional operations across repositories.
+
+    Usa el engine/sessionmaker compartido de la aplicación; no crea ni dispone
+    engines (eso ocurre una sola vez en el lifespan).
+    """
 
     def __init__(self) -> None:
-        self._engine = create_engine()
         self._session: AsyncSession | None = None
         self._employees: SQLAlchemyEmployeeRepository | None = None
         self._case_files: SQLAlchemyCaseFileRepository | None = None
@@ -111,7 +114,7 @@ class UnitOfWork:
         self._rag_evaluations: SQLAlchemyRagEvaluationRepository | None = None
 
     async def __aenter__(self) -> UnitOfWork:
-        self._session = AsyncSession(self._engine, expire_on_commit=False)
+        self._session = get_session_factory()()
         await self._session.begin()
         self._employees = SQLAlchemyEmployeeRepository(self._session)
         self._case_files = SQLAlchemyCaseFileRepository(self._session)
@@ -165,7 +168,6 @@ class UnitOfWork:
                 await self.commit()
         finally:
             await self._session.close()
-            await self._engine.dispose()
             self._session = None
 
     async def commit(self) -> None:

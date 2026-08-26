@@ -1,5 +1,12 @@
 # legal-AI-infraestructure
 
+## Arquitectura
+
+La arquitectura de la API, PostgreSQL/pgvector, Ollama y el almacenamiento
+de exportaciones está documentada en
+[`docs/infrastructure.md`](docs/infrastructure.md). El documento incluye un
+diagrama del runtime y otro del pipeline RAG.
+
 Las variables contractuales de Ollama para embeddings son `OLLAMA_EMBEDDING_BASE_URL`,
 `OLLAMA_EMBEDDING_TOKEN` y `OLLAMA_EMBEDDING_TIMEOUT_SECONDS`. Los nombres
 `OLLAMA_BASE_URL`, `OLLAMA_API_TOKEN` y `OLLAMA_TIMEOUT_SECONDS` se mantienen

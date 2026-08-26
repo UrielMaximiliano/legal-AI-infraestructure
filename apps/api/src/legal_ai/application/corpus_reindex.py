@@ -6,12 +6,18 @@ import uuid
 from dataclasses import asdict
 from typing import Any, cast
 
-from legal_ai.adapters.filesystem_corpus import CorpusSourceFile, FilesystemCorpusReader
-from legal_ai.application.corpus_ingestion import (
-    CorpusIngestionConfiguration,
-    CorpusIngestionService,
-    _PreparedDocument,
+from legal_ai.adapters.filesystem_corpus import CorpusSourceFile
+from legal_ai.application.corpus_ingestion import CorpusIngestionConfiguration
+from legal_ai.application.corpus_ingestion.embedding_batches import (
+    default_coordinator,
+    default_provider,
+    mark_batch_processing,
+    pending_batches,
+    persist_batch_failure,
+    persist_batch_success,
 )
+from legal_ai.application.corpus_ingestion.finalization import finalize_execution
+from legal_ai.application.corpus_ingestion.preparation import PreparedDocument
 from legal_ai.application.embedding_batch import EmbeddingBatchProcessor
 from legal_ai.application.legal_chunking import LegalChunkingService
 from legal_ai.domain.corpus import CorpusChunk, CorpusDocument
@@ -126,7 +132,7 @@ class CorpusReindexService:
         run_id = request.run_id or self._stable_run_id(request, documents)
         snapshot = asdict(config)
         configuration_hash = configuration_hash_for_snapshot(snapshot)
-        staged: list[tuple[_PreparedDocument, int, tuple[uuid.UUID, ...]]] = []
+        staged: list[tuple[PreparedDocument, int, tuple[uuid.UUID, ...]]] = []
         async with self._uow_factory() as uow:
             run = cast("IngestionRun | None", await uow.ingestion_runs.get(run_id))
             if run is not None:
@@ -206,7 +212,7 @@ class CorpusReindexService:
                         )
                 staged.append(
                     (
-                        _PreparedDocument(
+                        PreparedDocument(
                             source=CorpusSourceFile(
                                 source_identifier=document.source_identifier,
                                 extension=".txt",
@@ -221,14 +227,8 @@ class CorpusReindexService:
                         tuple(chunk_ids),
                     )
                 )
-        processor = CorpusIngestionService(
-            FilesystemCorpusReader(),
-            embedding_provider=self._provider,
-            inference_coordinator=self._coordinator,
-            uow_factory=self._uow_factory,
-        )
-        provider = self._provider or processor._default_provider(config)
-        coordinator = self._coordinator or processor._default_coordinator(config)
+        provider = self._provider or default_provider(config)
+        coordinator = self._coordinator or default_coordinator()
         batch_processor = EmbeddingBatchProcessor(
             provider,
             coordinator,
@@ -237,22 +237,14 @@ class CorpusReindexService:
         )
         failures: list[CorpusFailureReport] = []
         try:
-            for batch in await processor._pending_batches(
-                run_id, self._uow_factory, staged
-            ):
+            for batch in await pending_batches(run_id, self._uow_factory, staged):
                 try:
-                    texts = await processor._mark_batch_processing(
-                        batch, self._uow_factory
-                    )
+                    texts = await mark_batch_processing(batch, self._uow_factory)
                     vectors = await batch_processor.embed(texts)
-                    await processor._persist_batch_success(
-                        batch, vectors, self._uow_factory
-                    )
+                    await persist_batch_success(batch, vectors, self._uow_factory)
                 except Exception as exc:
                     code = getattr(exc, "code", "REINDEX_EMBEDDING_FAILED")
-                    await processor._persist_batch_failure(
-                        batch, str(code), self._uow_factory
-                    )
+                    await persist_batch_failure(batch, str(code), self._uow_factory)
                     failures.append(
                         CorpusFailureReport(
                             source_identifier="<reindex>",
@@ -260,7 +252,7 @@ class CorpusReindexService:
                             stage="EMBEDDING",
                         )
                     )
-            result_run = await processor._finalize_execution(
+            result_run = await finalize_execution(
                 run_id, staged, bool(failures), failures, self._uow_factory
             )
         finally:

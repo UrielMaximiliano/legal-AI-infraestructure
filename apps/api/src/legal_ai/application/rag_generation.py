@@ -15,14 +15,15 @@ from sqlalchemy.exc import IntegrityError
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.application.inference_coordinator import InferenceCoordinator
 from legal_ai.application.rag_prompt import RagPrompt, RagPromptBuilder
-from legal_ai.application.rag_query import RagQueryBuilder
-from legal_ai.application.rag_retrieval import RagRetrievalService
+from legal_ai.application.rag_query import RagQuery, RagQueryBuilder
+from legal_ai.application.rag_retrieval import RagRetrievalResult, RagRetrievalService
 from legal_ai.domain.draft import Draft
 from legal_ai.domain.enums import DraftStatus, ReviewStatus
 from legal_ai.domain.errors import DomainError
 from legal_ai.domain.rag import (
     RagGenerationRun,
     RagGenerationStatus,
+    RagRetrievedSource,
     RagSourceDisposition,
     sanitize_error_code,
     sha256_json,
@@ -318,34 +319,34 @@ class RagGenerationService:
         await self._audit.update(failed)
         return RagGenerationError(failed.error_code or "RAG_INTERNAL_ERROR")
 
-    async def generate(
-        self,
-        request: RagDraftGenerationRequest,
-        *,
-        idempotency_key: str,
-        request_id: str,
-    ) -> RagGenerationOutcome:
+    def _validate_request(self, idempotency_key: str, request_id: str) -> None:
         if not 16 <= len(idempotency_key) <= 128:
             raise RagGenerationError("RAG_INVALID_REQUEST")
         if not request_id.strip() or len(request_id) > 128:
             raise RagGenerationError("RAG_INVALID_REQUEST")
-        started = time.monotonic()
-        request_hash = self._request_hash(request)
-        key_hash = sha256_text(idempotency_key)
-        cached = await self._audit.reserve(key_hash, request_hash)
-        if cached is not None:
-            return cached
+
+    def _build_query(self, request: RagDraftGenerationRequest) -> RagQuery:
         query_variables = {
             "case_file_id": str(request.case_file_id),
             "template_id": str(request.template_id),
             **request.variables,
         }
-        query = RagQueryBuilder().build(
+        return RagQueryBuilder().build(
             variables=query_variables,
             language=request.retrieval.language,
             organization=request.retrieval.organization,
         )
-        run = RagGenerationRun(
+
+    def _new_run(
+        self,
+        request: RagDraftGenerationRequest,
+        query: RagQuery,
+        *,
+        request_hash: str,
+        key_hash: str,
+        request_id: str,
+    ) -> RagGenerationRun:
+        return RagGenerationRun(
             id=uuid.uuid4(),
             case_file_id=request.case_file_id,
             template_id=request.template_id,
@@ -361,20 +362,17 @@ class RagGenerationService:
             embedding_dimensions=self._embedding_dimensions,
             generation_model=self._generation_model,
         )
-        try:
-            await self._audit.create(run)
-        except RagGenerationError as exc:
-            if exc.code == "RAG_GENERATION_IN_PROGRESS":
-                cached = await self._audit.reserve(key_hash, request_hash)
-                if cached is not None:
-                    return cached
-            raise
-        except Exception as exc:
-            raise RagGenerationError("RAG_AUDIT_UNAVAILABLE") from exc
-        run = replace(
-            run, status=RagGenerationStatus.RETRIEVING, updated_at=datetime.now(UTC)
-        )
-        await self._audit.update(run)
+
+    async def _retrieve_and_audit(
+        self,
+        run: RagGenerationRun,
+        query: RagQuery,
+        request: RagDraftGenerationRequest,
+        *,
+        started: float,
+    ) -> tuple[RagRetrievalResult, tuple[RagRetrievedSource, ...]]:
+        """Recupera evidencia, audita las fuentes y selecciona las citables."""
+
         try:
             retrieval = await self._retrieval.retrieve(
                 query.text,
@@ -421,6 +419,20 @@ class RagGenerationService:
             updated_at=datetime.now(UTC),
         )
         await self._audit.update(run)
+        return retrieval, selected
+
+    async def _generate_structured(
+        self,
+        run: RagGenerationRun,
+        query: RagQuery,
+        request: RagDraftGenerationRequest,
+        retrieval: RagRetrievalResult,
+        selected: tuple[RagRetrievedSource, ...],
+        *,
+        started: float,
+    ) -> tuple[RagStructuredDraft, int]:
+        """Construye el prompt y genera la salida estructurada con reparación."""
+
         prompt = self._prompt_builder.build(
             query=query.text,
             context=retrieval.context.text,
@@ -503,7 +515,23 @@ class RagGenerationService:
                 )
         if payload is None:
             raise await self._fail(run, "RAG_OUTPUT_INVALID", started=started)
-        structured = RagStructuredDraft.model_validate(payload)
+        return RagStructuredDraft.model_validate(payload), repair_count
+
+    async def _persist_outcome(
+        self,
+        run: RagGenerationRun,
+        request: RagDraftGenerationRequest,
+        *,
+        request_id: str,
+        key_hash: str,
+        retrieval: RagRetrievalResult,
+        selected: tuple[RagRetrievedSource, ...],
+        structured: RagStructuredDraft,
+        repair_count: int,
+        started: float,
+    ) -> RagGenerationOutcome:
+        """Persiste el resultado auditado (draft, revisión y run); fail-closed."""
+
         now = datetime.now(UTC)
         draft = Draft(
             id=uuid.uuid4(),
@@ -550,3 +578,60 @@ class RagGenerationService:
                 started=started,
             ) from exc
         return outcome
+
+    async def generate(
+        self,
+        request: RagDraftGenerationRequest,
+        *,
+        idempotency_key: str,
+        request_id: str,
+    ) -> RagGenerationOutcome:
+        """Máquina de estados: reserva → recuperación → generación → auditoría."""
+
+        self._validate_request(idempotency_key, request_id)
+        started = time.monotonic()
+        request_hash = self._request_hash(request)
+        key_hash = sha256_text(idempotency_key)
+        cached = await self._audit.reserve(key_hash, request_hash)
+        if cached is not None:
+            return cached
+        query = self._build_query(request)
+        run = self._new_run(
+            request,
+            query,
+            request_hash=request_hash,
+            key_hash=key_hash,
+            request_id=request_id,
+        )
+        try:
+            await self._audit.create(run)
+        except RagGenerationError as exc:
+            if exc.code == "RAG_GENERATION_IN_PROGRESS":
+                cached = await self._audit.reserve(key_hash, request_hash)
+                if cached is not None:
+                    return cached
+            raise
+        except Exception as exc:
+            raise RagGenerationError("RAG_AUDIT_UNAVAILABLE") from exc
+        run = replace(
+            run, status=RagGenerationStatus.RETRIEVING, updated_at=datetime.now(UTC)
+        )
+        await self._audit.update(run)
+
+        retrieval, selected = await self._retrieve_and_audit(
+            run, query, request, started=started
+        )
+        structured, repair_count = await self._generate_structured(
+            run, query, request, retrieval, selected, started=started
+        )
+        return await self._persist_outcome(
+            run,
+            request,
+            request_id=request_id,
+            key_hash=key_hash,
+            retrieval=retrieval,
+            selected=selected,
+            structured=structured,
+            repair_count=repair_count,
+            started=started,
+        )

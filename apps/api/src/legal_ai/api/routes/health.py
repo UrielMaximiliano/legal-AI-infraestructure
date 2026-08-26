@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, Request, Response
 
-from legal_ai.adapters.database.engine import create_engine
+from legal_ai.adapters.database.engine import get_engine
 from legal_ai.adapters.database.health import PostgreSQLHealthAdapter
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.adapters.ollama.client import create_ollama_client
@@ -26,8 +26,7 @@ router = APIRouter(tags=["health"])
 
 
 def _get_health_service() -> HealthService:
-    engine = create_engine()
-    db_adapter = PostgreSQLHealthAdapter(engine)
+    db_adapter = PostgreSQLHealthAdapter(get_engine())
     client = create_ollama_client()
     ollama_adapter = OllamaHealthAdapter(
         client,

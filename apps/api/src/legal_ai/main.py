@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from legal_ai.adapters.database.engine import dispose_engine
 from legal_ai.api.exceptions import (
     conflict_error_handler,
     domain_error_handler,
@@ -95,6 +96,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await close_rag_coordinator()
+        await dispose_engine()
 
 
 app = FastAPI(
