@@ -23,9 +23,9 @@ class ExactVectorSearchRepository:
         query_vector: Sequence[float],
         *,
         filters: SearchFilters | Mapping[str, str] | None = None,
-        document_type: str = "decreto",
-        document_subtype: str = "designacion_transitoria",
-        jurisdiction: str = "nacion",
+        document_type: str | None = None,
+        document_subtype: str | None = None,
+        jurisdiction: str | None = None,
         organization: str | None = None,
         limit: int = 10,
         top_k: int | None = None,
@@ -126,11 +126,20 @@ class ExactVectorSearchRepository:
                 CorpusChunkModel.state == "ACTIVE",
                 CorpusDocumentModel.review_status == review_status,
                 CorpusChunkModel.generation == CorpusDocumentModel.active_generation,
-                CorpusDocumentModel.document_type == document_type,
-                CorpusDocumentModel.document_subtype == document_subtype,
-                CorpusDocumentModel.jurisdiction == jurisdiction,
             )
         )
+        if document_type is not None:
+            statement = statement.where(
+                CorpusDocumentModel.document_type == document_type
+            )
+        if document_subtype is not None:
+            statement = statement.where(
+                CorpusDocumentModel.document_subtype == document_subtype
+            )
+        if jurisdiction is not None:
+            statement = statement.where(
+                CorpusDocumentModel.jurisdiction == jurisdiction
+            )
         if organization is not None:
             statement = statement.where(
                 CorpusDocumentModel.organization == organization

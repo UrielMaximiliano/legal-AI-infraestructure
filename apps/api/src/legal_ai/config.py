@@ -27,6 +27,14 @@ class ServerConfig(BaseSettings):
     port: int = Field(default=8000, alias="API_PORT")
 
 
+class ServiceConfig(BaseSettings):
+    """Credential used by the private Next.js BFF in front of this API."""
+
+    model_config = {"extra": "ignore"}
+
+    service_token: str = Field(default="", alias="LEGAL_AI_SERVICE_TOKEN")
+
+
 class LoggingConfig(BaseSettings):
     """Configuración de logging."""
 
@@ -238,7 +246,9 @@ class RagConfig(BaseSettings):
     generation_max_retries: int = Field(
         default=1, alias="OLLAMA_GENERATION_MAX_RETRIES", ge=0, le=2
     )
-    prompt_version: str = Field(default="rag-decree-v1", alias="RAG_PROMPT_VERSION")
+    prompt_version: str = Field(
+        default="rag-legal-document-v1", alias="RAG_PROMPT_VERSION"
+    )
     schema_version: int = Field(default=1, alias="RAG_SCHEMA_VERSION", gt=0)
     top_k: int = Field(default=8, alias="RAG_TOP_K", ge=3, le=20)
     candidate_pool_size: int = Field(
@@ -350,6 +360,7 @@ class Settings:
     def __init__(self) -> None:
         self.app = AppConfig()
         self.server = ServerConfig()
+        self.service = ServiceConfig()
         self.logging = LoggingConfig()
         self.postgres = PostgreSQLConfig()
         self.export = ExportConfig()

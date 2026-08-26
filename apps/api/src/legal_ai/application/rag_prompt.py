@@ -1,4 +1,4 @@
-"""Versioned prompt assembly for structured decree drafts."""
+"""Versioned prompt assembly for structured legal-document drafts."""
 
 from __future__ import annotations
 
@@ -15,11 +15,17 @@ class RagPrompt:
 class RagPromptBuilder:
     """Keep instructions separate from evidence treated as untrusted data."""
 
-    def __init__(self, version: str = "rag-decree-v1") -> None:
+    def __init__(self, version: str = "rag-legal-document-v1") -> None:
         self.version = version
 
     def build(
-        self, *, query: str, context: str, variables: dict[str, str]
+        self,
+        *,
+        query: str,
+        context: str,
+        variables: dict[str, str],
+        document_type: str = "documento",
+        document_subtype: str = "expediente",
     ) -> RagPrompt:
         def safe_data(value: str) -> str:
             clean = " ".join(value.split())
@@ -48,6 +54,8 @@ class RagPromptBuilder:
         )
         user = (
             "REQUEST_DATA_BEGIN\n"
+            f"document_type={safe_data(document_type)}\n"
+            f"document_subtype={safe_data(document_subtype)}\n"
             f"query={safe_data(query)}\n"
             f"variables={safe_variables}\n\n"
             "REQUEST_DATA_END\n\n"

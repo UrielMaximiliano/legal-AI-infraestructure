@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -14,6 +14,8 @@ from legal_ai.schemas.validation import ActorValidated
 class FinalizeDraftRequest(ActorValidated, BaseModel):
     expected_version: int = Field(gt=0)
     finalized_by: str
+    official_number: int = Field(gt=0, le=999999)
+    issued_on: date
     finalization_notes: str | None = Field(default=None, max_length=2000)
     model_config = ConfigDict(extra="forbid")
 
@@ -36,4 +38,6 @@ class FinalizationResponse(BaseModel):
     finalization_notes: str | None = None
     final_snapshot: dict[str, Any]
     final_snapshot_sha256: str
+    official_number: int
+    issued_on: date
     model_config = ConfigDict(from_attributes=True)

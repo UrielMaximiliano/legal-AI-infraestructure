@@ -87,12 +87,19 @@ class PythonDocxRenderer:
                     self._add_body(word, str(text))
 
             signatures = document_data.get("signatures", [])
+            if isinstance(signatures, str):
+                signatures = [signatures]
             if isinstance(signatures, list):
                 for signature in signatures:
                     paragraph = word.add_paragraph()
                     paragraph.paragraph_format.space_before = Pt(72)
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    run = paragraph.add_run(str(signature))
+                    value = (
+                        signature.get("text", "")
+                        if isinstance(signature, dict)
+                        else signature
+                    )
+                    run = paragraph.add_run(str(value))
                     run.font.name = "Arial"
                     run.font.size = Pt(11)
 
@@ -157,4 +164,5 @@ class PythonDocxRenderer:
         self._add_heading(document, heading)
         if isinstance(values, list):
             for value in values:
-                self._add_body(document, str(value))
+                text = value.get("text", "") if isinstance(value, dict) else value
+                self._add_body(document, str(text))

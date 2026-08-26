@@ -30,6 +30,8 @@ class SafeCanonicalHtmlRenderer:
             por_ello = self._text(document.get("por_ello", ""))
             articles = self._articles(document.get("articles", []))
             signatures = self._signatures(document.get("signatures", []))
+            closing = self._text(document.get("closing", ""))
+            authority = self._text(document.get("authority", ""))
             institution = (
                 f'<header class="institutional">{header}</header>' if header else ""
             )
@@ -44,6 +46,9 @@ class SafeCanonicalHtmlRenderer:
                         else ""
                     ),
                     articles,
+                    f"<section><p>{closing}</p><p>{authority}</p></section>"
+                    if closing or authority
+                    else "",
                     f'<section class="source-text"><p>{source_text}</p></section>',
                     signatures,
                 )
@@ -85,12 +90,19 @@ class SafeCanonicalHtmlRenderer:
             value = json.dumps(value, ensure_ascii=False, sort_keys=True)
         return str(html.escape(value, quote=True)).replace("\n", "<br>")
 
+    @staticmethod
+    def _value_text(value: Any) -> Any:
+        return value.get("text", "") if isinstance(value, dict) else value
+
     def _section(self, heading: str, values: Any) -> str:
         if isinstance(values, str):
             values = [values]
         if not isinstance(values, Iterable):
             values = []
-        paragraphs = "".join(f"<p>{self._text(value)}</p>" for value in values)
+        paragraphs = "".join(
+            f"<p>{self._text(self._value_text(value))}</p>"
+            for value in values
+        )
         return f"<section><h2>{heading}</h2>{paragraphs}</section>"
 
     def _articles(self, values: Any) -> str:
@@ -110,12 +122,16 @@ class SafeCanonicalHtmlRenderer:
         return "".join(rendered)
 
     def _signatures(self, values: Any) -> str:
-        if not isinstance(values, Iterable) or isinstance(values, (str, bytes)):
+        if isinstance(values, str):
+            values = [values]
+        if not isinstance(values, Iterable):
             return ""
         return (
             '<section class="signatures">'
             + "".join(
-                f'<span class="signature">{self._text(value)}</span>'
+                '<span class="signature">'
+                f"{self._text(self._value_text(value))}"
+                "</span>"
                 for value in values
             )
             + "</section>"

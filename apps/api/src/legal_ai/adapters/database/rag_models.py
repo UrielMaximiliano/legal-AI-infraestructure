@@ -32,7 +32,8 @@ class RagGenerationRunModel(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ("
-            "'PENDING','RETRIEVING','GENERATING','VALIDATING','SUCCEEDED','FAILED'"
+            "'PENDING','RETRIEVING','GENERATING','VALIDATING','SUCCEEDED','FAILED',"
+            "'CANCELLED'"
             ")",
             name="ck_rag_generation_runs_status",
         ),
@@ -84,9 +85,10 @@ class RagGenerationRunModel(Base):
             "AND context_hash IS NOT NULL AND prompt_hash IS NOT NULL "
             "AND finished_at IS NOT NULL AND selected_count > 0 "
             "AND error_code IS NULL) OR "
-            "(status = 'FAILED' AND finished_at IS NOT NULL AND error_code IS NOT NULL "
+            "(status IN ('FAILED','CANCELLED') AND finished_at IS NOT NULL "
+            "AND error_code IS NOT NULL "
             "AND btrim(error_code) <> '' AND draft_id IS NULL) OR "
-            "(status NOT IN ('SUCCEEDED','FAILED') AND finished_at IS NULL "
+            "(status NOT IN ('SUCCEEDED','FAILED','CANCELLED') AND finished_at IS NULL "
             "AND draft_id IS NULL)",
             name="ck_rag_runs_terminal_state",
         ),
@@ -99,7 +101,8 @@ class RagGenerationRunModel(Base):
             "idempotency_key_hash",
             unique=True,
             postgresql_where=text(
-                "idempotency_key_hash IS NOT NULL AND status <> 'FAILED'"
+                "idempotency_key_hash IS NOT NULL AND "
+                "status NOT IN ('FAILED','CANCELLED')"
             ),
         ),
     )

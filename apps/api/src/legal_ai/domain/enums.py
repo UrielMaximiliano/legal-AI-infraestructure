@@ -43,6 +43,8 @@ class TemplateDocumentType(StrEnum):
     OFICIO = "oficio"
     SOLICITUD = "solicitud"
     ACUERDO = "acuerdo"
+    DISPOSICION = "disposicion"
+    DECRETO = "decreto"
     OTROS = "otros"
 
 

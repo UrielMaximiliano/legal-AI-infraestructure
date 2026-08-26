@@ -53,10 +53,16 @@ class CanonicalDocumentBuilder:
             "institutional_header", context.get("institutional_header", "")
         )
         document.setdefault("visto", [])
-        document.setdefault("considerando", [])
-        document.setdefault("por_ello", "")
+        document.setdefault("considerando", document.get("considerandos", []))
+        document.setdefault(
+            "por_ello", document.get("dispositive_intro", "")
+        )
         document.setdefault("articles", [])
-        document.setdefault("signatures", [])
+        signature = document.get("signature")
+        document.setdefault(
+            "signatures",
+            [signature] if isinstance(signature, str) and signature else [],
+        )
         document.setdefault("locale", locale.strip())
 
         source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
@@ -71,22 +77,31 @@ class CanonicalDocumentBuilder:
         )
 
     @staticmethod
-    def build_preview(draft: Draft) -> CanonicalDocument:
+    def build_preview(
+        draft: Draft, structured_document: dict[str, Any] | None = None
+    ) -> CanonicalDocument:
         """Build a renderer-only view of the current approved draft."""
         source_text = draft.content or ""
         if not source_text:
             raise InvalidFinalizationError(details={"field": "draft.content"})
         context = draft.context_snapshot
-        document = {
-            "title": draft.title,
-            "institutional_header": context.get("institutional_header", ""),
-            "visto": [],
-            "considerando": [],
-            "por_ello": "",
-            "articles": [],
-            "signatures": [],
-            "locale": context.get("locale", "es-AR"),
-        }
+        document = dict(structured_document or {})
+        document.setdefault("title", draft.title)
+        document.setdefault("visto", [])
+        document.setdefault("considerando", document.get("considerandos", []))
+        document.setdefault(
+            "por_ello", document.get("dispositive_intro", "")
+        )
+        document.setdefault("articles", [])
+        signature = document.get("signature")
+        document.setdefault(
+            "signatures",
+            [signature] if isinstance(signature, str) and signature else [],
+        )
+        document.setdefault("locale", context.get("locale", "es-AR"))
+        document.setdefault(
+            "institutional_header", context.get("institutional_header", "")
+        )
         return CanonicalDocument(
             schema_version=1,
             draft_id=str(draft.id),

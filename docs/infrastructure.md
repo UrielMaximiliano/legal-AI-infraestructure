@@ -80,7 +80,8 @@ y [`semantic_search.py`](../apps/api/src/legal_ai/api/routes/semantic_search.py)
 1. construye la consulta jurídica;
 2. recupera chunks elegibles desde pgvector;
 3. arma contexto con citas `SRC-NNN`;
-4. llama a Ollama con JSON Schema y crea un draft pendiente de revisión humana.
+4. llama a Ollama con JSON Schema y crea un draft generado, pendiente de que la
+   persona inicie la revisión humana.
 
 Ollama se separa en dos usos:
 

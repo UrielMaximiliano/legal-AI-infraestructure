@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -36,12 +36,16 @@ class _Drafts:
         finalization_notes,
         final_snapshot,
         final_snapshot_sha256,
+        official_number=None,
+        issued_on=None,
     ):
         if self.draft.version != expected_version or self.draft.is_finalized():
             return None
         self.draft.finalized_by = finalized_by
         self.draft.finalized_at = finalized_at
         self.draft.finalization_notes = finalization_notes
+        self.draft.official_number = official_number
+        self.draft.issued_on = issued_on
         self.draft.final_snapshot = final_snapshot
         self.draft.final_snapshot_sha256 = final_snapshot_sha256
         self.draft.version += 1
@@ -71,6 +75,35 @@ class _Events:
     async def create(self, event):
         self.items.append(event)
         return event
+
+
+class _Identifiers:
+    def __init__(self):
+        self.items = []
+
+    async def get_by_draft(self, draft_id):
+        return next((item for item in self.items if item.draft_id == draft_id), None)
+
+    async def get_by_identity(self, document_type, number, year):
+        return next(
+            (
+                item
+                for item in self.items
+                if item.document_type == document_type
+                and item.number == number
+                and item.year == year
+            ),
+            None,
+        )
+
+    async def create(self, identifier):
+        self.items.append(identifier)
+        return identifier
+
+
+class _Templates:
+    async def get_by_id(self, template_id):
+        return SimpleNamespace(document_type="decreto")
 
 
 def _uow(status=DraftStatus.APROBADO, blocking=0):
@@ -115,6 +148,8 @@ def _uow(status=DraftStatus.APROBADO, blocking=0):
         reviews=_Reviews(review),
         review_comments=_Comments(blocking),
         review_events=_Events(),
+        official_document_identifiers=_Identifiers(),
+        templates=_Templates(),
     )
     return uow, draft
 
@@ -131,6 +166,41 @@ async def test_finalization_writes_snapshot_once_and_replays() -> None:
     assert replay.status_code == 200
     assert replay.sha256 == first.sha256
     assert len(uow.review_events.items) == 1
+
+
+@pytest.mark.unit
+async def test_finalization_reserves_official_number_and_persists_metadata() -> None:
+    uow, draft = _uow()
+    service = FinalizationService(uow)
+    issued_on = date(2026, 8, 26)
+
+    first = await service.finalize(
+        draft.id,
+        4,
+        "Editor",
+        None,
+        "req-official",
+        official_number=123,
+        issued_on=issued_on,
+    )
+
+    assert first.identifier is not None
+    assert first.identifier.document_type == "decreto"
+    assert first.identifier.number == 123
+    assert draft.official_number == 123
+    assert draft.issued_on == issued_on
+    assert first.snapshot["document"]["official_number"] == 123
+
+    replay = await service.finalize(
+        draft.id,
+        4,
+        "Editor",
+        None,
+        "req-official-replay",
+        official_number=123,
+        issued_on=issued_on,
+    )
+    assert replay.identifier == first.identifier
 
 
 @pytest.mark.unit

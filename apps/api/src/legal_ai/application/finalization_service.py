@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+from sqlalchemy.exc import IntegrityError
 
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.application.canonical_document import (
@@ -19,11 +21,14 @@ from legal_ai.domain.errors import (
     DraftNotApprovedError,
     DraftNotFound004Error,
     InvalidFinalizationError,
+    OfficialDocumentNumberConflictError,
     OpenBlockingCommentsError,
 )
+from legal_ai.domain.official_document import OfficialDocumentIdentifier
 from legal_ai.domain.review import DocumentReview
 from legal_ai.domain.review_event import ReviewEvent
 from legal_ai.observability.logging import log_event
+from legal_ai.schemas.document import LegalDocument
 from legal_ai.schemas.validation import validate_actor
 
 
@@ -35,6 +40,7 @@ class FinalizationResult:
     snapshot: dict[str, object]
     sha256: str
     status_code: int
+    identifier: OfficialDocumentIdentifier | None = None
 
 
 class FinalizationService:
@@ -50,6 +56,8 @@ class FinalizationService:
         finalized_by: str,
         finalization_notes: str | None,
         request_id: str,
+        official_number: int | None = None,
+        issued_on: date | None = None,
     ) -> FinalizationResult:
         actor = self._actor(finalized_by)
         notes = self._notes(finalization_notes)
@@ -62,8 +70,20 @@ class FinalizationService:
             raise InvalidFinalizationError(details={"field": "review"})
 
         if draft.is_finalized():
+            identifier = (
+                await self._uow.official_document_identifiers.get_by_draft(draft.id)
+                if official_number is not None and issued_on is not None
+                else None
+            )
             return self._replay_or_conflict(
-                draft, review, expected_version, actor, notes
+                draft,
+                review,
+                expected_version,
+                actor,
+                notes,
+                official_number,
+                issued_on,
+                identifier,
             )
 
         if draft.status != DraftStatus.APROBADO:
@@ -73,17 +93,68 @@ class FinalizationService:
         if await self._uow.review_comments.count_open_blocking(review.id):
             raise OpenBlockingCommentsError()
 
-        serialized = self._snapshot(draft, review)
+        self._validate_structured_snapshot(review)
+        identifier = None
+        if official_number is not None or issued_on is not None:
+            if official_number is None or issued_on is None:
+                raise InvalidFinalizationError(details={"field": "official_number"})
+            template = await self._uow.templates.get_by_id(draft.template_id)
+            if template is None:
+                raise InvalidFinalizationError(details={"field": "template"})
+            document_type = str(template.document_type)
+            existing_identifier = (
+                await self._uow.official_document_identifiers.get_by_identity(
+                    document_type, official_number, issued_on.year
+                )
+            )
+            if (
+                existing_identifier is not None
+                and existing_identifier.draft_id != draft.id
+            ):
+                raise OfficialDocumentNumberConflictError()
+            identifier = OfficialDocumentIdentifier(
+                id=uuid.uuid4(),
+                draft_id=draft.id,
+                document_type=document_type,
+                number=official_number,
+                year=issued_on.year,
+                issued_on=issued_on,
+                created_at=datetime.now(UTC),
+            )
+            try:
+                if existing_identifier is None:
+                    identifier = await self._uow.official_document_identifiers.create(
+                        identifier
+                    )
+                else:
+                    identifier = existing_identifier
+            except IntegrityError as exc:
+                raise OfficialDocumentNumberConflictError() from exc
+
+        serialized = self._snapshot(draft, review, official_number, issued_on)
         finalized_at = datetime.now(UTC)
-        updated = await self._uow.drafts.update_finalization(
-            draft_id,
-            expected_version,
-            actor,
-            finalized_at,
-            notes,
-            serialized.snapshot,
-            serialized.sha256,
-        )
+        if official_number is None and issued_on is None:
+            updated = await self._uow.drafts.update_finalization(
+                draft_id,
+                expected_version,
+                actor,
+                finalized_at,
+                notes,
+                serialized.snapshot,
+                serialized.sha256,
+            )
+        else:
+            updated = await self._uow.drafts.update_finalization(
+                draft_id,
+                expected_version,
+                actor,
+                finalized_at,
+                notes,
+                serialized.snapshot,
+                serialized.sha256,
+                official_number,
+                issued_on,
+            )
         if updated is None:
             raise ConcurrentModification004Error(details={"draft_id": str(draft_id)})
         await self._uow.review_events.create(
@@ -100,7 +171,9 @@ class FinalizationService:
             sha256=serialized.sha256,
             result="success",
         )
-        return FinalizationResult(updated, serialized.snapshot, serialized.sha256, 200)
+        return FinalizationResult(
+            updated, serialized.snapshot, serialized.sha256, 200, identifier
+        )
 
     @staticmethod
     def _actor(value: str) -> str:
@@ -122,10 +195,30 @@ class FinalizationService:
         return notes or None
 
     @staticmethod
-    def _snapshot(draft: Draft, review: DocumentReview) -> SerializedCanonicalDocument:
-        return CanonicalDocumentBuilder.serialize(
-            CanonicalDocumentBuilder.build(draft, review)
-        )
+    def _snapshot(
+        draft: Draft,
+        review: DocumentReview,
+        official_number: int | None = None,
+        issued_on: date | None = None,
+    ) -> SerializedCanonicalDocument:
+        canonical = CanonicalDocumentBuilder.build(draft, review)
+        if official_number is not None and issued_on is not None:
+            canonical.document["official_number"] = official_number
+            canonical.document["issued_on"] = issued_on.isoformat()
+        return CanonicalDocumentBuilder.serialize(canonical)
+
+    @staticmethod
+    def _validate_structured_snapshot(review: DocumentReview) -> None:
+        payload = review.review_snapshot.get("document")
+        if not isinstance(payload, dict):
+            return
+        try:
+            document = LegalDocument.model_validate(payload)
+            document.validate_for_approval()
+        except Exception as exc:
+            raise InvalidFinalizationError(
+                details={"field": "review_snapshot.document"}
+            ) from exc
 
     @staticmethod
     def _replay_or_conflict(
@@ -134,6 +227,9 @@ class FinalizationService:
         expected_version: int,
         actor: str,
         notes: str | None,
+        official_number: int | None,
+        issued_on: date | None,
+        identifier: OfficialDocumentIdentifier | None,
     ) -> FinalizationResult:
         if expected_version != draft.version - 1:
             raise ConcurrentModification004Error(details={"draft_id": str(draft.id)})
@@ -144,14 +240,24 @@ class FinalizationService:
             or draft.final_snapshot_sha256 is None
         ):
             raise DraftAlreadyFinalizedError(details={"draft_id": str(draft.id)})
-        expected = FinalizationService._snapshot(draft, review)
+        if official_number is not None or issued_on is not None:
+            if identifier is None or (
+                official_number != identifier.number
+                or issued_on != identifier.issued_on
+            ):
+                raise DraftAlreadyFinalizedError(details={"draft_id": str(draft.id)})
+        elif identifier is not None:
+            raise DraftAlreadyFinalizedError(details={"draft_id": str(draft.id)})
+        expected = FinalizationService._snapshot(
+            draft, review, official_number, issued_on
+        )
         if (
             expected.snapshot != draft.final_snapshot
             or expected.sha256 != draft.final_snapshot_sha256
         ):
             raise DraftAlreadyFinalizedError(details={"draft_id": str(draft.id)})
         return FinalizationResult(
-            draft, draft.final_snapshot, draft.final_snapshot_sha256, 200
+            draft, draft.final_snapshot, draft.final_snapshot_sha256, 200, identifier
         )
 
     @staticmethod

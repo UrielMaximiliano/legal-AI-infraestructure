@@ -20,13 +20,14 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_NAME: legal-ai-api
       APP_VERSION: ${APP_VERSION:-0.1.0}
       API_HOST: 0.0.0.0
       API_PORT: 8000
+      LEGAL_AI_SERVICE_TOKEN: ${LEGAL_AI_SERVICE_TOKEN:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -50,7 +51,7 @@ services:
       OLLAMA_GENERATION_TOKEN: ${OLLAMA_GENERATION_TOKEN:-}
       OLLAMA_GENERATION_TIMEOUT_SECONDS: ${OLLAMA_GENERATION_TIMEOUT_SECONDS:-300}
       OLLAMA_GENERATION_MAX_RETRIES: ${OLLAMA_GENERATION_MAX_RETRIES:-1}
-      RAG_PROMPT_VERSION: ${RAG_PROMPT_VERSION:-rag-decree-v1}
+      RAG_PROMPT_VERSION: ${RAG_PROMPT_VERSION:-rag-legal-document-v1}
       RAG_SCHEMA_VERSION: ${RAG_SCHEMA_VERSION:-1}
       RAG_TOP_K: ${RAG_TOP_K:-8}
       RAG_CANDIDATE_POOL_SIZE: ${RAG_CANDIDATE_POOL_SIZE:-24}

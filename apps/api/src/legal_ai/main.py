@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from legal_ai.adapters.database.engine import dispose_engine
+from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.api.exceptions import (
     conflict_error_handler,
     domain_error_handler,
@@ -18,7 +19,7 @@ from legal_ai.api.exceptions import (
     service_error_handler,
     validation_error_handler,
 )
-from legal_ai.api.middleware import RagSecurityMiddleware
+from legal_ai.api.middleware import RagSecurityMiddleware, ServiceTokenMiddleware
 from legal_ai.api.router import router
 from legal_ai.api.routes.generation import GenerationAttemptNotFoundError
 from legal_ai.api.routes.rag import close_rag_coordinator
@@ -93,6 +94,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Gestión del lifespan de la aplicación."""
     setup_logging(settings.logging.level)
     try:
+        async with UnitOfWork() as uow:
+            await uow.rag_runs.close_orphaned()
         yield
     finally:
         await close_rag_coordinator()
@@ -106,8 +109,10 @@ app = FastAPI(
 )
 
 # RequestContextMiddleware remains outermost so rejected requests still receive a
-# sanitized correlation id. The security middleware never inspects Authorization.
+# sanitized correlation id. ServiceTokenMiddleware validates the private BFF token
+# when one is configured for API routes.
 app.add_middleware(RagSecurityMiddleware)
+app.add_middleware(ServiceTokenMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.include_router(router)
 

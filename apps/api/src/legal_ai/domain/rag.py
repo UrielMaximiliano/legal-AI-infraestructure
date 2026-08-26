@@ -31,6 +31,8 @@ _ALLOWED_ERRORS = frozenset(
         "OLLAMA_RESPONSE_INVALID",
         "RAG_IDEMPOTENCY_KEY_MISMATCH",
         "RAG_GENERATION_IN_PROGRESS",
+        "RAG_GENERATION_CANCELLED",
+        "RAG_GENERATION_INTERRUPTED",
     }
 )
 
@@ -42,6 +44,7 @@ class RagGenerationStatus(StrEnum):
     VALIDATING = "VALIDATING"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 class RagSourceDisposition(StrEnum):
@@ -152,7 +155,7 @@ class RagGenerationRun:
     embedding_model: str = EMBEDDING_MODEL
     embedding_dimensions: int = EMBEDDING_DIMENSIONS
     generation_model: str = "qwen3.6:35b"
-    prompt_version: str = "rag-decree-v1"
+    prompt_version: str = "rag-legal-document-v1"
     schema_version: int = 1
     top_k: int = 8
     candidate_pool_size: int = 24
@@ -213,26 +216,35 @@ class RagGenerationRun:
             RagGenerationStatus.PENDING: {
                 RagGenerationStatus.RETRIEVING,
                 RagGenerationStatus.FAILED,
+                RagGenerationStatus.CANCELLED,
             },
             RagGenerationStatus.RETRIEVING: {
                 RagGenerationStatus.GENERATING,
                 RagGenerationStatus.FAILED,
+                RagGenerationStatus.CANCELLED,
             },
             RagGenerationStatus.GENERATING: {
                 RagGenerationStatus.VALIDATING,
                 RagGenerationStatus.FAILED,
+                RagGenerationStatus.CANCELLED,
             },
             RagGenerationStatus.VALIDATING: {
                 RagGenerationStatus.SUCCEEDED,
                 RagGenerationStatus.FAILED,
+                RagGenerationStatus.CANCELLED,
             },
             RagGenerationStatus.SUCCEEDED: set(),
             RagGenerationStatus.FAILED: set(),
+            RagGenerationStatus.CANCELLED: set(),
         }
         if status not in allowed[self.status]:
             raise ValueError("RAG_INVALID_STATE_TRANSITION")
         timestamp = now or datetime.now(UTC)
-        terminal = status in {RagGenerationStatus.SUCCEEDED, RagGenerationStatus.FAILED}
+        terminal = status in {
+            RagGenerationStatus.SUCCEEDED,
+            RagGenerationStatus.FAILED,
+            RagGenerationStatus.CANCELLED,
+        }
         return replace(
             self,
             status=status,

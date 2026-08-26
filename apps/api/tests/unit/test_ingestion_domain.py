@@ -425,7 +425,7 @@ def test_search_filters_require_and_normalize_mvp_values() -> None:
         ("decreto", "   ", "nacion"),
         ("decreto", "designacion_transitoria", "\t"),
         ("resolucion", "designacion_transitoria", "nacion"),
-        ("decreto", "licencia", "nacion"),
+        ("decreto", "inexistente", "nacion"),
         ("decreto", "designacion_transitoria", "provincia"),
     ],
 )

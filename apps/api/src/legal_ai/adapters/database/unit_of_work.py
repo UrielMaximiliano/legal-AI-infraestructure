@@ -25,6 +25,9 @@ from legal_ai.adapters.database.designation_repository import (
 from legal_ai.adapters.database.document_export_repository import (
     SQLAlchemyDocumentExportRepository,
 )
+from legal_ai.adapters.database.draft_document_repository import (
+    SQLAlchemyDraftDocumentVersionRepository,
+)
 from legal_ai.adapters.database.draft_repository import SQLAlchemyDraftRepository
 from legal_ai.adapters.database.draft_transition_repository import (
     SQLAlchemyDraftTransitionRepository,
@@ -43,6 +46,9 @@ from legal_ai.adapters.database.ingestion_repositories import (
     SQLAlchemyEmbeddingBatchRepository,
     SQLAlchemyIngestionFailureRepository,
     SQLAlchemyIngestionRunRepository,
+)
+from legal_ai.adapters.database.official_document_repository import (
+    SQLAlchemyOfficialDocumentRepository,
 )
 from legal_ai.adapters.database.pgvector_search import ExactVectorSearchRepository
 from legal_ai.adapters.database.rag_repositories import (
@@ -84,8 +90,14 @@ class UnitOfWork:
         self._case_status_history: SQLAlchemyCaseStatusHistoryRepository | None = None
         self._templates: SQLAlchemyTemplateRepository | None = None
         self._drafts: SQLAlchemyDraftRepository | None = None
+        self._draft_document_versions: (
+            SQLAlchemyDraftDocumentVersionRepository | None
+        ) = None
         self._draft_transitions: SQLAlchemyDraftTransitionRepository | None = None
         self._generation_attempts: SQLAlchemyGenerationAttemptRepository | None = None
+        self._official_document_identifiers: (
+            SQLAlchemyOfficialDocumentRepository | None
+        ) = None
         self._designations: SQLAlchemyDesignationRepository | None = None
         self._reviews: SQLAlchemyReviewRepository | None = None
         self._review_operations: SQLAlchemyReviewOperationRequestRepository | None = (
@@ -121,8 +133,14 @@ class UnitOfWork:
         self._case_status_history = SQLAlchemyCaseStatusHistoryRepository(self._session)
         self._templates = SQLAlchemyTemplateRepository(self._session)
         self._drafts = SQLAlchemyDraftRepository(self._session)
+        self._draft_document_versions = SQLAlchemyDraftDocumentVersionRepository(
+            self._session
+        )
         self._draft_transitions = SQLAlchemyDraftTransitionRepository(self._session)
         self._generation_attempts = SQLAlchemyGenerationAttemptRepository(self._session)
+        self._official_document_identifiers = SQLAlchemyOfficialDocumentRepository(
+            self._session
+        )
         self._designations = SQLAlchemyDesignationRepository(self._session)
         self._reviews = SQLAlchemyReviewRepository(self._session)
         self._review_operations = SQLAlchemyReviewOperationRequestRepository(
@@ -209,6 +227,23 @@ class UnitOfWork:
         if self._drafts is None:
             raise RuntimeError("UnitOfWork not initialized")
         return self._drafts
+
+    @property
+    def draft_document_versions(self) -> SQLAlchemyDraftDocumentVersionRepository:
+        if self._draft_document_versions is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._draft_document_versions
+
+    @property
+    def draft_documents(self) -> SQLAlchemyDraftDocumentVersionRepository:
+        """Compatibility name used by the structured-document application service."""
+        return self.draft_document_versions
+
+    @property
+    def official_document_identifiers(self) -> SQLAlchemyOfficialDocumentRepository:
+        if self._official_document_identifiers is None:
+            raise RuntimeError("UnitOfWork not initialized")
+        return self._official_document_identifiers
 
     @property
     def draft_transitions(self) -> SQLAlchemyDraftTransitionRepository:

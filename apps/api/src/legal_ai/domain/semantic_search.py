@@ -158,9 +158,16 @@ def _normalize_filter_value(key: str, value: object) -> str:
         cleaned = cleaned.upper()
 
     allowed_values = {
-        "document_type": {"decreto"},
-        "document_subtype": {"designacion_transitoria"},
-        "jurisdiction": {"nacion"},
+        "document_type": {"decreto", "disposicion"},
+        "document_subtype": {
+            "designacion",
+            "designacion_transitoria",
+            "licencia",
+            "renuncia",
+            "contratacion",
+            "otro",
+        },
+        "jurisdiction": {"nacion", "corrientes"},
         "review_status": _ALLOWED_REVIEW_STATUSES,
     }
     if key in allowed_values and cleaned not in allowed_values[key]:

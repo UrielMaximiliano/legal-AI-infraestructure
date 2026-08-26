@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from legal_ai.domain.enums import DraftStatus, TransitionAction
@@ -25,6 +25,8 @@ class Draft:
     created_at: datetime
     updated_at: datetime
     content: str | None = None
+    document: dict[str, object] | None = None
+    document_type: str = "otros"
     variables_used: dict[str, str] = field(default_factory=dict)
     parent_draft_id: UUID | None = None
     observations: str | None = None
@@ -32,8 +34,11 @@ class Draft:
     finalized_by: str | None = None
     finalized_at: datetime | None = None
     finalization_notes: str | None = None
+    official_number: int | None = None
+    issued_on: date | None = None
     final_snapshot: dict[str, object] | None = None
     final_snapshot_sha256: str | None = None
+    idempotency_key: str | None = None
 
     def is_finalized(self) -> bool:
         """Return whether this draft has an immutable final snapshot."""

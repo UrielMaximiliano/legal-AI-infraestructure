@@ -80,6 +80,8 @@ async def test_finalize_is_write_once_and_blocks_legacy_mutations(client) -> Non
     body = {
         "expected_version": 2,
         "finalized_by": " Editor ",
+        "official_number": 123,
+        "issued_on": "2026-08-26",
         "finalization_notes": " Ready ",
     }
     first = await client.post(f"/api/v1/drafts/{draft_id}/finalize", json=body)
@@ -137,6 +139,8 @@ async def test_preview_uses_only_final_snapshot_after_finalization(client) -> No
         json={
             "expected_version": 2,
             "finalized_by": "Editor",
+            "official_number": 124,
+            "issued_on": "2026-08-26",
             "finalization_notes": "Ready",
         },
     )

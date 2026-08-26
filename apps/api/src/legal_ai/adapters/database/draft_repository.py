@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from legal_ai.adapters.database.models import DocumentDraftModel
 from legal_ai.domain.draft import Draft
@@ -24,7 +26,9 @@ class SQLAlchemyDraftRepository:
             template_id=draft.template_id,
             case_file_id=draft.case_file_id,
             title=draft.title,
+            document_type=draft.document_type,
             content=draft.content,
+            document_json=draft.document,
             status=draft.status,
             version=draft.version,
             generation_number=draft.generation_number,
@@ -37,8 +41,11 @@ class SQLAlchemyDraftRepository:
             finalized_by=draft.finalized_by,
             finalized_at=draft.finalized_at,
             finalization_notes=draft.finalization_notes,
+            official_number=draft.official_number,
+            issued_on=draft.issued_on,
             final_snapshot=draft.final_snapshot,
             final_snapshot_sha256=draft.final_snapshot_sha256,
+            idempotency_key=draft.idempotency_key,
         )
         self._session.add(model)
         await self._session.flush()
@@ -57,6 +64,77 @@ class SQLAlchemyDraftRepository:
             select(DocumentDraftModel)
             .where(DocumentDraftModel.id == draft_id)
             .with_for_update()
+        )
+        model = result.scalars().first()
+        return self._to_domain(model) if model else None
+
+    async def get_by_idempotency_key(self, key: str) -> Draft | None:
+        result = await self._session.execute(
+            select(DocumentDraftModel).where(DocumentDraftModel.idempotency_key == key)
+        )
+        model = result.scalars().first()
+        return self._to_domain(model) if model else None
+
+    async def list_all(
+        self,
+        *,
+        query_text: str | None,
+        document_type: str | None,
+        case_file_id: UUID | None,
+        status: str | None,
+        skip: int,
+        limit: int,
+    ) -> tuple[list[Draft], int]:
+        filters: list[ColumnElement[bool]] = []
+        if query_text:
+            pattern = f"%{query_text}%"
+            filters.append(
+                DocumentDraftModel.title.ilike(pattern)
+                | DocumentDraftModel.content.ilike(pattern)
+            )
+        if document_type:
+            filters.append(DocumentDraftModel.document_type == document_type)
+        if case_file_id:
+            filters.append(DocumentDraftModel.case_file_id == case_file_id)
+        if status:
+            filters.append(DocumentDraftModel.status == status)
+        count_result = await self._session.execute(
+            select(func.count()).select_from(DocumentDraftModel).where(*filters)
+        )
+        total = count_result.scalar() or 0
+        result = await self._session.execute(
+            select(DocumentDraftModel)
+            .where(*filters)
+            .order_by(
+                DocumentDraftModel.updated_at.desc(), DocumentDraftModel.id.desc()
+            )
+            .offset(skip)
+            .limit(limit)
+        )
+        return [self._to_domain(model) for model in result.scalars().all()], total
+
+    async def update_document(
+        self,
+        draft: Draft,
+        expected_version: int,
+        document: dict[str, object],
+        content: str,
+    ) -> Draft | None:
+        result = await self._session.execute(
+            update(DocumentDraftModel)
+            .where(
+                DocumentDraftModel.id == draft.id,
+                DocumentDraftModel.version == expected_version,
+                DocumentDraftModel.finalized_at.is_(None),
+            )
+            .values(
+                title=draft.title,
+                content=content,
+                document_json=document,
+                version=expected_version + 1,
+                updated_at=func.now(),
+            )
+            .returning(DocumentDraftModel)
         )
         model = result.scalars().first()
         return self._to_domain(model) if model else None
@@ -102,7 +180,9 @@ class SQLAlchemyDraftRepository:
                 DocumentDraftModel.finalized_at.is_(None),
             )
             .values(
+                title=draft.title,
                 content=draft.content,
+                document_json=draft.document,
                 version=draft.version + 1,
                 observations=draft.observations,
             )
@@ -130,7 +210,9 @@ class SQLAlchemyDraftRepository:
             .values(
                 title=draft.title,
                 content=draft.content,
+                document_json=draft.document,
                 status=draft.status,
+                document_type=draft.document_type,
                 version=expected_version + 1,
                 observations=draft.observations,
             )
@@ -173,6 +255,8 @@ class SQLAlchemyDraftRepository:
         finalization_notes: str | None,
         final_snapshot: dict[str, object],
         final_snapshot_sha256: str,
+        official_number: int | None = None,
+        issued_on: date | None = None,
     ) -> Draft | None:
         """Write finalization metadata exactly once under optimistic locking."""
         result = await self._session.execute(
@@ -186,6 +270,8 @@ class SQLAlchemyDraftRepository:
                 finalized_by=finalized_by,
                 finalized_at=finalized_at,
                 finalization_notes=finalization_notes,
+                official_number=official_number,
+                issued_on=issued_on,
                 final_snapshot=final_snapshot,
                 final_snapshot_sha256=final_snapshot_sha256,
                 version=expected_version + 1,
@@ -203,6 +289,8 @@ class SQLAlchemyDraftRepository:
             case_file_id=model.case_file_id,
             title=model.title,
             content=model.content,
+            document=model.document_json,
+            document_type=model.document_type,
             status=DraftStatus(model.status),
             version=model.version,
             generation_number=model.generation_number,
@@ -215,8 +303,11 @@ class SQLAlchemyDraftRepository:
             finalized_by=model.finalized_by,
             finalized_at=model.finalized_at,
             finalization_notes=model.finalization_notes,
+            official_number=model.official_number,
+            issued_on=model.issued_on,
             final_snapshot=model.final_snapshot,
             final_snapshot_sha256=model.final_snapshot_sha256,
+            idempotency_key=model.idempotency_key,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )

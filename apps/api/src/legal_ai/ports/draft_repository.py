@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Protocol
 from uuid import UUID
 
@@ -17,6 +18,8 @@ class DraftRepository(Protocol):
     async def get_by_id(self, draft_id: UUID) -> Draft | None: ...
 
     async def get_by_id_for_update(self, draft_id: UUID) -> Draft | None: ...
+
+    async def get_by_idempotency_key(self, key: str) -> Draft | None: ...
 
     async def list_by_case_file(
         self,
@@ -45,4 +48,6 @@ class DraftRepository(Protocol):
         finalization_notes: str | None,
         final_snapshot: dict[str, object],
         final_snapshot_sha256: str,
+        official_number: int | None = None,
+        issued_on: date | None = None,
     ) -> Draft | None: ...

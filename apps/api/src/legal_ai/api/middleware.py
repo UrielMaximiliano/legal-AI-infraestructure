@@ -2,12 +2,43 @@
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
 from legal_ai.config import settings
+
+
+class ServiceTokenMiddleware(BaseHTTPMiddleware):
+    """Require the private BFF service token when one is configured."""
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        expected = settings.service.service_token
+        path = request.url.path
+        if expected and path.startswith("/api/v1/"):
+            authorization = request.headers.get("authorization", "")
+            supplied = authorization.removeprefix("Bearer ").strip()
+            if not supplied:
+                return self._error(request, 401, "SERVICE_AUTH_REQUIRED")
+            if not hmac.compare_digest(supplied, expected):
+                return self._error(request, 403, "SERVICE_AUTH_INVALID")
+        return await call_next(request)
+
+    @staticmethod
+    def _error(request: Request, status_code: int, code: str) -> JSONResponse:
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "error_code": code,
+                "message": "La solicitud no tiene credenciales de servicio válidas.",
+                "request_id": getattr(request.state, "request_id", None),
+            },
+        )
 
 
 class RagSecurityMiddleware(BaseHTTPMiddleware):

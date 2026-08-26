@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -55,6 +56,33 @@ class SQLAlchemyRagGenerationRunRepository:
         )
         model = result.scalars().first()
         return self._to_domain(model) if model else None
+
+    async def close_orphaned(self) -> int:
+        """Close non-terminal runs left open by a process restart."""
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            update(RagGenerationRunModel)
+            .where(
+                RagGenerationRunModel.status.in_(
+                    (
+                        RagGenerationStatus.PENDING.value,
+                        RagGenerationStatus.RETRIEVING.value,
+                        RagGenerationStatus.GENERATING.value,
+                        RagGenerationStatus.VALIDATING.value,
+                    )
+                )
+            )
+            .values(
+                status=RagGenerationStatus.FAILED.value,
+                error_code="RAG_GENERATION_INTERRUPTED",
+                draft_id=None,
+                finished_at=now,
+                updated_at=now,
+            )
+            .returning(RagGenerationRunModel.id)
+        )
+        await self._session.flush()
+        return len(result.all())
 
     @staticmethod
     def _values(run: RagGenerationRun) -> dict[str, Any]:

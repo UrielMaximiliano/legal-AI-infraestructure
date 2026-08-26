@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -51,7 +51,9 @@ class DraftResponse(BaseModel):
     template_id: UUID
     case_file_id: UUID
     title: str
+    document_type: str = "otros"
     content: str | None = None
+    document: dict[str, object] | None = None
     status: DraftStatus
     version: int
     generation_number: int
@@ -64,6 +66,8 @@ class DraftResponse(BaseModel):
     finalized_by: str | None = None
     finalized_at: datetime | None = None
     finalization_notes: str | None = None
+    official_number: int | None = None
+    issued_on: date | None = None
     final_snapshot_sha256: str | None = None
     model_config = ConfigDict(from_attributes=True)
 

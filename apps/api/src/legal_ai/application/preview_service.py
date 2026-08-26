@@ -53,7 +53,13 @@ class PreviewService:
         if draft.is_finalized():
             snapshot = draft.final_snapshot or {}
         else:
-            snapshot = CanonicalDocumentBuilder.build_preview(draft).as_snapshot()
+            version = await self._uow.draft_document_versions.get_current(draft.id)
+            if version is None:
+                snapshot = CanonicalDocumentBuilder.build_preview(draft).as_snapshot()
+            else:
+                snapshot = CanonicalDocumentBuilder.build_preview(
+                    draft, version.document
+                ).as_snapshot()
         html_text = self._renderer.render(snapshot)
         log_event(
             "preview_render_completed",

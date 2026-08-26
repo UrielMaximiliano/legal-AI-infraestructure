@@ -7,6 +7,9 @@ de exportaciones está documentada en
 [`docs/infrastructure.md`](docs/infrastructure.md). El documento incluye un
 diagrama del runtime y otro del pipeline RAG.
 
+El contrato para integrar el BFF de IMI LEG con esta API está en
+[`docs/imi-leg-legal-ai-contract.md`](docs/imi-leg-legal-ai-contract.md).
+
 Las variables contractuales de Ollama para embeddings son `OLLAMA_EMBEDDING_BASE_URL`,
 `OLLAMA_EMBEDDING_TOKEN` y `OLLAMA_EMBEDDING_TIMEOUT_SECONDS`. Los nombres
 `OLLAMA_BASE_URL`, `OLLAMA_API_TOKEN` y `OLLAMA_TIMEOUT_SECONDS` se mantienen
@@ -126,7 +129,8 @@ Para el entorno operativo y el smoke completo, consultar
 
 El endpoint `POST /api/v1/rag/drafts/generate` recupera únicamente chunks activos
 de documentos `REVIEWED` en `INDEX_90`, genera JSON estricto con `qwen3.6:35b`
-mediante `/api/chat` y crea un Draft asistido pendiente de revisión humana.
+mediante `/api/chat` y crea un Draft asistido generado, pendiente de que la
+persona inicie la revisión humana.
 Las fuentes se devuelven con citas `SRC-NNN`; no se exponen prompts, consultas,
 vectores, documentos completos ni credenciales.
 

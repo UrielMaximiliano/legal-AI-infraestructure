@@ -203,11 +203,23 @@ class ReviewService:
                 existing,
                 200,
             )
+        version_repository = getattr(self._uow, "draft_document_versions", None)
+        document_version = (
+            await version_repository.get_current(draft.id)
+            if version_repository is not None
+            else None
+        )
+        document = (
+            document_version.document
+            if document_version is not None
+            else draft.document
+        )
         snapshot = {
             "draft_id": str(draft.id),
             "draft_version": draft.version,
             "title": draft.title,
             "content": draft.content or "",
+            "document": document,
             "context_snapshot": draft.context_snapshot,
         }
         digest = self.request_hash(snapshot)

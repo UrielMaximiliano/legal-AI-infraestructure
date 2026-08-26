@@ -11,7 +11,7 @@ contract.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 from pgvector.sqlalchemy import HALFVEC, Vector
 
 revision = "006"
@@ -24,6 +24,10 @@ NEW_DIMENSIONS = 2560
 
 
 def _assert_no_vectors(table: str) -> None:
+    # Offline SQL generation has no database to inspect.  Keep the guard for
+    # real upgrades, where it prevents a lossy dimension migration.
+    if context.is_offline_mode():
+        return
     bind = op.get_bind()
     count = bind.execute(
         sa.text(f"SELECT count(*) FROM {table} WHERE embedding IS NOT NULL")

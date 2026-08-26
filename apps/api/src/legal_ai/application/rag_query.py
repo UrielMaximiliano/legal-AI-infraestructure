@@ -31,6 +31,9 @@ class RagQueryBuilder:
         case_file: dict[str, str] | None = None,
         template: dict[str, str] | None = None,
         variables: dict[str, str] | None = None,
+        document_type: str | None = None,
+        document_subtype: str | None = None,
+        jurisdiction: str | None = None,
         organization: str | None = None,
         language: str = "es",
     ) -> RagQuery:
@@ -54,13 +57,29 @@ class RagQueryBuilder:
         language = language.strip().lower()
         if not 2 <= len(language) <= 16 or _SENSITIVE_RE.search(language):
             raise ValueError("RAG_LANGUAGE_INVALID")
+        policy_filters: dict[str, str | None] = {
+            "document_type": document_type,
+            "document_subtype": document_subtype,
+            "jurisdiction": jurisdiction,
+        }
+        for filter_key, filter_value in policy_filters.items():
+            if filter_value is None:
+                continue
+            if not isinstance(filter_value, str):
+                raise ValueError("RAG_FILTER_INVALID")
+            clean = " ".join(filter_value.split())[:120]
+            if not clean or _SENSITIVE_RE.search(clean):
+                raise ValueError("RAG_FILTER_INVALID")
+            policy_filters[filter_key] = clean
         return RagQuery(
             text=text,
             query_hash=sha256_text(text),
             filters={
-                "document_type": "decreto",
-                "document_subtype": "designacion_transitoria",
-                "jurisdiction": "nacion",
+                **{
+                    key: value
+                    for key, value in policy_filters.items()
+                    if value is not None
+                },
                 "review_status": "REVIEWED",
                 "evaluation_split": "INDEX_90",
                 "language": language,

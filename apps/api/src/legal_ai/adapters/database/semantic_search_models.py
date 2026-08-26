@@ -75,12 +75,13 @@ class SemanticSearchRunModel(Base):
             "'jurisdiction', 'language', 'organization', 'review_status']) "
             "= '{}'::jsonb AND "
             "jsonb_typeof(filters_sanitized->'document_type') = 'string' AND "
-            "filters_sanitized->>'document_type' = 'decreto' AND "
+            "filters_sanitized->>'document_type' IN ('decreto', 'disposicion') AND "
             "jsonb_typeof(filters_sanitized->'document_subtype') = 'string' AND "
-            "filters_sanitized->>'document_subtype' = "
-            "'designacion_transitoria' AND "
+            "filters_sanitized->>'document_subtype' IN "
+            "('designacion', 'designacion_transitoria', 'licencia', 'renuncia', "
+            "'contratacion', 'otro') AND "
             "jsonb_typeof(filters_sanitized->'jurisdiction') = 'string' AND "
-            "filters_sanitized->>'jurisdiction' = 'nacion' AND "
+            "filters_sanitized->>'jurisdiction' IN ('nacion', 'corrientes') AND "
             "jsonb_typeof(filters_sanitized->'review_status') = 'string' AND "
             "filters_sanitized->>'review_status' IN "
             "('REVIEWED', 'PENDING_REVIEW') AND "
@@ -98,7 +99,7 @@ class SemanticSearchRunModel(Base):
         ),
         CheckConstraint(
             "(status = 'SUCCEEDED' AND error_code IS NULL) OR "
-            "(status = 'FAILED' AND error_code IS NOT NULL AND "
+            "(status IN ('FAILED', 'CANCELLED') AND error_code IS NOT NULL AND "
             "btrim(error_code) <> '')",
             name="ck_semantic_search_runs_error_code",
         ),

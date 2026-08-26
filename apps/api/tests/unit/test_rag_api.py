@@ -112,7 +112,7 @@ async def test_generate_endpoint_returns_pending_review_and_legacy_safe_fields(
         case_file_id=case_file_id,
         title=structured.title,
         content=structured.render_for_review(),
-        status=DraftStatus.EN_REVISION,
+        status=DraftStatus.GENERADO,
         version=1,
         generation_number=1,
         context_snapshot={"rag_run_id": str(run_id)},
@@ -170,7 +170,7 @@ async def test_generate_endpoint_returns_pending_review_and_legacy_safe_fields(
         )
     assert response.status_code == 201
     payload = response.json()
-    assert payload["draft"]["status"] == "PENDING_REVIEW"
+    assert payload["draft"]["status"] == "generado"
     assert payload["draft"]["id"] == str(draft_id)
     assert "vector" not in response.text.lower()
 

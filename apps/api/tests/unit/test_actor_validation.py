@@ -12,6 +12,8 @@ def test_actor_is_trimmed_and_preserves_case_and_unicode() -> None:
     request = FinalizeDraftRequest(
         expected_version=1,
         finalized_by="  Árbitro_01@Mesa  ",
+        official_number=1,
+        issued_on="2026-01-01",
     )
     assert request.finalized_by == "Árbitro_01@Mesa"
 
@@ -19,7 +21,12 @@ def test_actor_is_trimmed_and_preserves_case_and_unicode() -> None:
 @pytest.mark.parametrize("value", ["", "   ", "a" * 101, "actor/1", "actor\\1"])
 def test_invalid_actor_is_rejected(value: str) -> None:
     with pytest.raises(ValidationError):
-        FinalizeDraftRequest(expected_version=1, finalized_by=value)
+        FinalizeDraftRequest(
+            expected_version=1,
+            finalized_by=value,
+            official_number=1,
+            issued_on="2026-01-01",
+        )
 
 
 def test_review_actor_fields_are_textual_and_not_identifiers() -> None:

@@ -214,7 +214,13 @@ class DocumentDraftModel(Base):
         UUID(as_uuid=True), ForeignKey("case_files.id"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
+    document_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="otros", server_default="otros"
+    )
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_json: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="generado")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     generation_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -239,10 +245,13 @@ class DocumentDraftModel(Base):
         DateTime(timezone=True), nullable=True
     )
     finalization_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    official_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    issued_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     final_snapshot: Mapped[dict[str, object] | None] = mapped_column(
         JSONB(none_as_null=True), nullable=True
     )
     final_snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     reviews: Mapped[list[DocumentReviewModel]] = relationship(
         "DocumentReviewModel", back_populates="draft"
@@ -257,6 +266,8 @@ class DocumentDraftModel(Base):
         Index("ix_drafts_parent_draft_id", "parent_draft_id"),
         Index("ix_drafts_template_id", "template_id"),
         Index("ix_drafts_context_hash", "context_hash"),
+        Index("ix_drafts_document_type", "document_type"),
+        Index("uq_drafts_idempotency_key", "idempotency_key", unique=True),
         CheckConstraint(
             "finalized_by IS NULL OR "
             "char_length(btrim(finalized_by)) BETWEEN 1 AND 100",
@@ -278,6 +289,83 @@ class DocumentDraftModel(Base):
             "AND final_snapshot IS NOT NULL AND final_snapshot_sha256 IS NOT NULL)",
             name="ck_drafts_finalization_complete",
         ),
+    )
+
+
+class DraftDocumentVersionModel(Base):
+    """Append-only structured snapshots used by the editor and exports."""
+
+    __tablename__ = "draft_document_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    draft_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_drafts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    document: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(24), nullable=False)
+    edited_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("draft_id", "version", name="uq_draft_document_version"),
+        CheckConstraint("version > 0", name="ck_draft_document_version_positive"),
+        CheckConstraint(
+            "jsonb_typeof(document) = 'object'",
+            name="ck_draft_document_json_object",
+        ),
+        CheckConstraint(
+            "content_sha256 ~ '^[0-9a-fA-F]{64}$'",
+            name="ck_draft_document_content_sha256",
+        ),
+        CheckConstraint(
+            "source IN ('AI_GENERATED','MANUAL','HUMAN_EDIT')",
+            name="ck_draft_document_source",
+        ),
+        Index("ix_draft_document_versions_draft", "draft_id", "version"),
+    )
+
+
+class OfficialDocumentIdentifierModel(Base):
+    """Unique official number allocated during finalization."""
+
+    __tablename__ = "official_document_identifiers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    draft_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_drafts.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    document_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    issued_on: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "document_type",
+            "number",
+            "year",
+            name="uq_official_document_identifier",
+        ),
+        CheckConstraint("number > 0", name="ck_official_document_number_positive"),
+        CheckConstraint("year BETWEEN 1900 AND 2200", name="ck_official_document_year"),
+        Index("ix_official_document_identifiers_year", "year"),
     )
 
 

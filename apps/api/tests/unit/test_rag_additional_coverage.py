@@ -903,7 +903,7 @@ async def test_route_generation_success_and_validation(monkeypatch) -> None:
         ),
         "route-key-000001",
     )
-    assert result.draft.status == "PENDING_REVIEW"
+    assert result.draft.status == "generado"
 
     missing = _request().model_copy(
         update={"template_id": template_id, "case_file_id": case_id, "variables": {}}

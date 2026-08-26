@@ -63,7 +63,7 @@ async def test_fake_generation_repairs_once_and_is_idempotent() -> None:
     assert first.run.id == second.run.id
     assert first.run.schema_repair_count == 1
     assert first.draft is not None
-    assert first.draft.status.value == "en_revision"
+    assert first.draft.status.value == "generado"
     assert provider.calls == 2
 
 

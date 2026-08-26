@@ -122,13 +122,36 @@ class ConcurrentModification004Error(DomainError):
 class ContentTooLarge004Error(DomainError):
     code = "CONTENT_TOO_LARGE"
     status_code = 422
+    default_message = "El contenido excede el límite permitido"
 
     def __init__(self, size: int, limit: int) -> None:
         self.size = size
         self.limit = limit
         super().__init__(details={"size": size, "limit": limit})
 
-    default_message = "El contenido excede el límite permitido"
+
+class DraftDocumentNotFoundError(DomainError):
+    code = "DRAFT_DOCUMENT_NOT_FOUND"
+    status_code = 404
+    default_message = "El contenido estructurado del borrador no existe"
+
+
+class DraftDocumentLockedError(DomainError):
+    code = "DRAFT_DOCUMENT_LOCKED"
+    status_code = 409
+    default_message = "El borrador está siendo revisado y no admite cambios"
+
+
+class StructuredDocumentInvalidError(DomainError):
+    code = "STRUCTURED_DOCUMENT_INVALID"
+    status_code = 422
+    default_message = "El documento estructurado no es válido"
+
+
+class OfficialDocumentNumberConflictError(DomainError):
+    code = "OFFICIAL_DOCUMENT_NUMBER_CONFLICT"
+    status_code = 409
+    default_message = "El número oficial ya existe para ese tipo y año"
 
 
 class ExportSizeExceededError(DomainError):

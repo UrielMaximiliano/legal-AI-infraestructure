@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -18,7 +18,8 @@ from legal_ai.application.rag_prompt import RagPrompt, RagPromptBuilder
 from legal_ai.application.rag_query import RagQuery, RagQueryBuilder
 from legal_ai.application.rag_retrieval import RagRetrievalResult, RagRetrievalService
 from legal_ai.domain.draft import Draft
-from legal_ai.domain.enums import DraftStatus, ReviewStatus
+from legal_ai.domain.draft_document import DraftDocumentVersion
+from legal_ai.domain.enums import DraftStatus
 from legal_ai.domain.errors import DomainError
 from legal_ai.domain.rag import (
     RagGenerationRun,
@@ -29,15 +30,15 @@ from legal_ai.domain.rag import (
     sha256_json,
     sha256_text,
 )
-from legal_ai.domain.review import DocumentReview
-from legal_ai.domain.review_event import ReviewEvent
 from legal_ai.ports.embedding import InferencePriority
 from legal_ai.ports.structured_generation import (
     StructuredGenerationError,
     StructuredGenerationProvider,
 )
+from legal_ai.schemas.document import LegalDocument
 from legal_ai.schemas.rag import (
     RagDraftGenerationRequest,
+    RagSource,
     RagStructuredDraft,
     rag_schema,
 )
@@ -56,6 +57,7 @@ class RagGenerationError(DomainError):
             "RAG_INSUFFICIENT_EVIDENCE": 422,
             "RAG_OUTPUT_INVALID": 422,
             "OLLAMA_TIMEOUT": 504,
+            "RAG_GENERATION_CANCELLED": 409,
         }.get(self.code, 503)
         message = {
             "MISSING_REQUIRED_VARIABLES": (
@@ -68,6 +70,7 @@ class RagGenerationError(DomainError):
             "RAG_GENERATION_IN_PROGRESS": (
                 "La generación solicitada ya está en progreso."
             ),
+            "RAG_GENERATION_CANCELLED": "La generación fue cancelada.",
         }.get(self.code, "La generación RAG no pudo completarse.")
         super().__init__(message)
 
@@ -96,6 +99,10 @@ class RagAuditStore(Protocol):
     async def save_outcome(
         self, key_hash: str, outcome: RagGenerationOutcome
     ) -> None: ...
+
+
+ProgressCallback = Callable[[str, RagGenerationRun | None], Awaitable[None]]
+CancellationEvent = asyncio.Event
 
 
 class InMemoryRagAuditStore:
@@ -135,7 +142,8 @@ class InMemoryRagAuditStore:
         async with self._lock:
             self.runs[run.id] = run
             if (
-                run.status is RagGenerationStatus.FAILED
+                run.status
+                in {RagGenerationStatus.FAILED, RagGenerationStatus.CANCELLED}
                 and run.idempotency_key_hash is not None
             ):
                 self._pending.pop(run.idempotency_key_hash, None)
@@ -165,6 +173,11 @@ class SQLAlchemyRagAuditStore:
                 return None
             if existing.request_hash != request_hash:
                 raise RagGenerationError("RAG_IDEMPOTENCY_KEY_MISMATCH")
+            if existing.status in {
+                RagGenerationStatus.FAILED,
+                RagGenerationStatus.CANCELLED,
+            }:
+                return None
             if existing.status is not RagGenerationStatus.SUCCEEDED:
                 raise RagGenerationError("RAG_GENERATION_IN_PROGRESS")
             if existing.draft_id is None:
@@ -199,49 +212,26 @@ class SQLAlchemyRagAuditStore:
             raise RagGenerationError("RAG_AUDIT_UNAVAILABLE")
         async with self._uow_factory() as uow:
             await uow.drafts.create(outcome.draft)
+            version_repository = getattr(uow, "draft_document_versions", None)
+            if version_repository is not None:
+                await version_repository.create(
+                    DraftDocumentVersion(
+                        id=uuid.uuid4(),
+                        draft_id=outcome.draft.id,
+                        version=outcome.draft.version,
+                        document=outcome.draft.document
+                        or outcome.structured_draft.model_dump(mode="json"),
+                        content=outcome.draft.content or "",
+                        content_sha256=sha256_text(outcome.draft.content or ""),
+                        source="AI_GENERATED",
+                        edited_by="rag-system",
+                        created_at=datetime.now(UTC),
+                    )
+                )
             await uow.rag_structured_drafts.create(
                 run_id=outcome.run.id,
                 draft_id=outcome.draft.id,
                 structured=outcome.structured_draft,
-            )
-            snapshot = {
-                "draft_id": str(outcome.draft.id),
-                "draft_version": outcome.draft.version,
-                "title": outcome.draft.title,
-                "content": outcome.draft.content or "",
-                "context_snapshot": outcome.draft.context_snapshot,
-            }
-            now = datetime.now(UTC)
-            review = await uow.reviews.create(
-                DocumentReview(
-                    id=uuid.uuid4(),
-                    draft_id=outcome.draft.id,
-                    draft_version=outcome.draft.version,
-                    review_snapshot=snapshot,
-                    review_snapshot_sha256=sha256_json(snapshot),
-                    status=ReviewStatus.OPEN,
-                    opened_by="rag-system",
-                    version=1,
-                    opened_at=now,
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            await uow.review_events.create(
-                ReviewEvent(
-                    id=uuid.uuid4(),
-                    review_id=review.id,
-                    draft_id=review.draft_id,
-                    resource_type="REVIEW",
-                    resource_id=str(review.id),
-                    event_type="REVIEW_OPENED",
-                    actor="rag-system",
-                    request_id=outcome.run.request_id,
-                    run_id=outcome.run.id,
-                    draft_version=review.draft_version,
-                    summary={"source": "RAG"},
-                    created_at=now,
-                )
             )
             await uow.rag_runs.update(outcome.run)
 
@@ -255,7 +245,7 @@ class RagGenerationService:
         retrieval: RagRetrievalService,
         provider: StructuredGenerationProvider,
         audit: RagAuditStore | None = None,
-        prompt_version: str = "rag-decree-v1",
+        prompt_version: str = "rag-legal-document-v1",
         schema_repair_attempts: int = 1,
         generation_model: str = "qwen3.6:35b",
         embedding_model: str = "qwen3-embedding:4b-q4_K_M",
@@ -279,7 +269,11 @@ class RagGenerationService:
         self._embedding_dimensions = embedding_dimensions
         self._coordinator = inference_coordinator
 
-    def _request_hash(self, request: RagDraftGenerationRequest) -> str:
+    def _request_hash(
+        self,
+        request: RagDraftGenerationRequest,
+        query_context: dict[str, str] | None = None,
+    ) -> str:
         return sha256_json(
             {
                 "template_id": str(request.template_id),
@@ -291,6 +285,7 @@ class RagGenerationService:
                 "embedding_model": self._embedding_model,
                 "embedding_dimensions": self._embedding_dimensions,
                 "generation_model": self._generation_model,
+                "query_context": query_context or {},
             }
         )
 
@@ -319,13 +314,57 @@ class RagGenerationService:
         await self._audit.update(failed)
         return RagGenerationError(failed.error_code or "RAG_INTERNAL_ERROR")
 
+    async def _cancel(self, run: RagGenerationRun, started: float) -> None:
+        cancelled = replace(
+            run,
+            status=RagGenerationStatus.CANCELLED,
+            draft_id=None,
+            error_code="RAG_GENERATION_CANCELLED",
+            finished_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            total_duration_ms=max(0, int((time.monotonic() - started) * 1000)),
+        )
+        try:
+            await self._audit.update(cancelled)
+        except Exception:
+            # Cancellation must never mask the original task cancellation.
+            return
+
+    async def _check_cancelled(
+        self,
+        run: RagGenerationRun,
+        started: float,
+        cancel_event: CancellationEvent | None,
+    ) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            await self._cancel(run, started)
+            raise RagGenerationError("RAG_GENERATION_CANCELLED")
+
+    async def _notify(
+        self,
+        callback: ProgressCallback | None,
+        phase: str,
+        run: RagGenerationRun | None,
+    ) -> None:
+        if callback is None:
+            return
+        try:
+            await callback(phase, run)
+        except Exception:
+            # A disconnected SSE subscriber does not alter the legal operation.
+            return
+
     def _validate_request(self, idempotency_key: str, request_id: str) -> None:
         if not 16 <= len(idempotency_key) <= 128:
             raise RagGenerationError("RAG_INVALID_REQUEST")
         if not request_id.strip() or len(request_id) > 128:
             raise RagGenerationError("RAG_INVALID_REQUEST")
 
-    def _build_query(self, request: RagDraftGenerationRequest) -> RagQuery:
+    def _build_query(
+        self,
+        request: RagDraftGenerationRequest,
+        query_context: dict[str, str] | None = None,
+    ) -> RagQuery:
         query_variables = {
             "case_file_id": str(request.case_file_id),
             "template_id": str(request.template_id),
@@ -333,6 +372,9 @@ class RagGenerationService:
         }
         return RagQueryBuilder().build(
             variables=query_variables,
+            document_type=(query_context or {}).get("document_type"),
+            document_subtype=(query_context or {}).get("document_subtype"),
+            jurisdiction=(query_context or {}).get("jurisdiction"),
             language=request.retrieval.language,
             organization=request.retrieval.organization,
         )
@@ -370,9 +412,15 @@ class RagGenerationService:
         request: RagDraftGenerationRequest,
         *,
         started: float,
-    ) -> tuple[RagRetrievalResult, tuple[RagRetrievedSource, ...]]:
+        cancel_event: CancellationEvent | None,
+    ) -> tuple[
+        RagGenerationRun,
+        RagRetrievalResult,
+        tuple[RagRetrievedSource, ...],
+    ]:
         """Recupera evidencia, audita las fuentes y selecciona las citables."""
 
+        await self._check_cancelled(run, started, cancel_event)
         try:
             retrieval = await self._retrieval.retrieve(
                 query.text,
@@ -419,7 +467,8 @@ class RagGenerationService:
             updated_at=datetime.now(UTC),
         )
         await self._audit.update(run)
-        return retrieval, selected
+        await self._check_cancelled(run, started, cancel_event)
+        return run, retrieval, selected
 
     async def _generate_structured(
         self,
@@ -430,13 +479,16 @@ class RagGenerationService:
         selected: tuple[RagRetrievedSource, ...],
         *,
         started: float,
-    ) -> tuple[RagStructuredDraft, int]:
+        cancel_event: CancellationEvent | None,
+    ) -> tuple[RagGenerationRun, RagStructuredDraft, int]:
         """Construye el prompt y genera la salida estructurada con reparación."""
 
         prompt = self._prompt_builder.build(
             query=query.text,
             context=retrieval.context.text,
             variables=request.variables,
+            document_type=query.filters.get("document_type", "documento"),
+            document_subtype=query.filters.get("document_subtype", "expediente"),
         )
         run = replace(run, prompt_hash=sha256_text(prompt.user_message))
         await self._audit.update(run)
@@ -450,6 +502,7 @@ class RagGenerationService:
         payload: dict[str, Any] | None = None
         validation_error = "RAG_OUTPUT_INVALID"
         for attempt in range(self._schema_repair_attempts + 1):
+            await self._check_cancelled(run, started, cancel_event)
             try:
                 active_prompt = prompt
 
@@ -484,9 +537,31 @@ class RagGenerationService:
                         timeout=300,
                     )
                 candidate = RagStructuredDraft.model_validate(raw)
-                allowed = {source.citation_id for source in selected}
-                if not set(candidate.citation_ids).issubset(allowed):
+                selected_by_citation = {
+                    source.citation_id: source for source in selected
+                }
+                if not set(candidate.citation_ids).issubset(selected_by_citation):
                     raise ValueError("RAG_UNKNOWN_CITATION")
+                candidate = candidate.model_copy(
+                    update={
+                        "sources": [
+                            RagSource.model_validate(
+                                {
+                                    "citation_id": source.citation_id,
+                                    "external_id": source.external_id,
+                                    "title": source.title,
+                                    "publication_date": source.publication_date,
+                                    "section_type": source.section_type,
+                                    "source_url": source.source_url,
+                                }
+                            )
+                            for source in (
+                                selected_by_citation[citation_id]
+                                for citation_id in candidate.citation_ids
+                            )
+                        ]
+                    }
+                )
                 payload = candidate.model_dump(mode="json")
                 break
             except (StructuredGenerationError, ValueError, TypeError) as exc:
@@ -515,7 +590,7 @@ class RagGenerationService:
                 )
         if payload is None:
             raise await self._fail(run, "RAG_OUTPUT_INVALID", started=started)
-        return RagStructuredDraft.model_validate(payload), repair_count
+        return run, RagStructuredDraft.model_validate(payload), repair_count
 
     async def _persist_outcome(
         self,
@@ -528,18 +603,30 @@ class RagGenerationService:
         selected: tuple[RagRetrievedSource, ...],
         structured: RagStructuredDraft,
         repair_count: int,
+        document_type: str,
         started: float,
+        cancel_event: CancellationEvent | None,
     ) -> RagGenerationOutcome:
         """Persiste el resultado auditado (draft, revisión y run); fail-closed."""
 
+        await self._check_cancelled(run, started, cancel_event)
         now = datetime.now(UTC)
+        document = LegalDocument.model_validate(
+            {
+                **structured.model_dump(mode="json"),
+                "document_type": document_type,
+            }
+        )
+        document_payload = document.model_dump(mode="json")
         draft = Draft(
             id=uuid.uuid4(),
             template_id=request.template_id,
             case_file_id=request.case_file_id,
             title=structured.title,
             content=structured.render_for_review(),
-            status=DraftStatus.EN_REVISION,
+            document=document_payload,
+            document_type=document_type,
+            status=DraftStatus.GENERADO,
             version=1,
             generation_number=1,
             context_snapshot={
@@ -585,17 +672,20 @@ class RagGenerationService:
         *,
         idempotency_key: str,
         request_id: str,
+        query_context: dict[str, str] | None = None,
+        progress_callback: ProgressCallback | None = None,
+        cancel_event: CancellationEvent | None = None,
     ) -> RagGenerationOutcome:
         """Máquina de estados: reserva → recuperación → generación → auditoría."""
 
         self._validate_request(idempotency_key, request_id)
         started = time.monotonic()
-        request_hash = self._request_hash(request)
+        request_hash = self._request_hash(request, query_context)
         key_hash = sha256_text(idempotency_key)
         cached = await self._audit.reserve(key_hash, request_hash)
         if cached is not None:
             return cached
-        query = self._build_query(request)
+        query = self._build_query(request, query_context)
         run = self._new_run(
             request,
             query,
@@ -613,25 +703,45 @@ class RagGenerationService:
             raise
         except Exception as exc:
             raise RagGenerationError("RAG_AUDIT_UNAVAILABLE") from exc
-        run = replace(
-            run, status=RagGenerationStatus.RETRIEVING, updated_at=datetime.now(UTC)
-        )
-        await self._audit.update(run)
+        try:
+            await self._notify(progress_callback, "queued", run)
+            await self._check_cancelled(run, started, cancel_event)
+            run = replace(
+                run,
+                status=RagGenerationStatus.RETRIEVING,
+                updated_at=datetime.now(UTC),
+            )
+            await self._audit.update(run)
+            await self._notify(progress_callback, "retrieving", run)
 
-        retrieval, selected = await self._retrieve_and_audit(
-            run, query, request, started=started
-        )
-        structured, repair_count = await self._generate_structured(
-            run, query, request, retrieval, selected, started=started
-        )
-        return await self._persist_outcome(
-            run,
-            request,
-            request_id=request_id,
-            key_hash=key_hash,
-            retrieval=retrieval,
-            selected=selected,
-            structured=structured,
-            repair_count=repair_count,
-            started=started,
-        )
+            run, retrieval, selected = await self._retrieve_and_audit(
+                run, query, request, started=started, cancel_event=cancel_event
+            )
+            await self._notify(progress_callback, "generating", run)
+            run, structured, repair_count = await self._generate_structured(
+                run,
+                query,
+                request,
+                retrieval,
+                selected,
+                started=started,
+                cancel_event=cancel_event,
+            )
+            await self._notify(progress_callback, "validating", run)
+            await self._check_cancelled(run, started, cancel_event)
+            return await self._persist_outcome(
+                run,
+                request,
+                request_id=request_id,
+                key_hash=key_hash,
+                retrieval=retrieval,
+                selected=selected,
+                structured=structured,
+                repair_count=repair_count,
+                document_type=(query_context or {}).get("document_type", "otros"),
+                started=started,
+                cancel_event=cancel_event,
+            )
+        except asyncio.CancelledError:
+            await self._cancel(run, started)
+            raise
