@@ -1,0 +1,48 @@
+{
+  "binary_metric_policy": "critical_fields_score, critical_contradiction_free, critical_omission_free, and unsupported_addition_free use exact McNemar as the primary paired test; bootstrap/Wilcoxon/dz are complementary only",
+  "bootstrap_resamples": 10000,
+  "bootstrap_seed": 20260825,
+  "c02_c14_sensitivity": {
+    "comparison_csv": "c02_c14_sensitivity_analysis.csv",
+    "controlled_replicate_claim": "not_claimed; seed is NOT_RECORDED",
+    "material_changes": 1,
+    "scenario_a": "C02 canonical representative",
+    "scenario_b": "C14 alternate output for same config_hash",
+    "status": "CHANGED"
+  },
+  "case_pairing": "same case_id; all primary representatives have 1000 shared cases",
+  "continuous_holm_family": "within changed parameter across its controlled metric rows; primary p-values are Holm-adjusted",
+  "continuous_test": "paired bootstrap percentile, 10000 resamples; Wilcoxon signed-rank reported as sensitivity test; Cohen dz",
+  "evaluator_hashes": [
+    "13644bdc6bc0761d6d22b59dff5c4013132442d8ec56c3258075f524b0893166"
+  ],
+  "evaluator_policy": "frozen; no evaluator changes or recalculation",
+  "evaluator_version": "benchmark-v2-legal-core-2-calibrated",
+  "failure_decomposition": "legalpass_failure_decomposition.csv; exact combinations of omission, contradiction, unsupported addition, and fields flags",
+  "figures": [
+    "legalpass_ranking.svg",
+    "legalpass_pairwise_heatmap.svg",
+    "controlled_effects.svg"
+  ],
+  "legal_precision_policy": "NOT_RECORDED; no proxy invented",
+  "legalpass_holm_family": "all 120 pairwise comparisons",
+  "legalpass_pairwise_count": 120,
+  "legalpass_test": "McNemar exact two-sided",
+  "mixed_logistic": "NOT_FIT; no mixed-effects runtime and current grid has confounding",
+  "primary_artifacts": 17,
+  "primary_unique_configs": 16,
+  "replicate_candidate_groups": [
+    [
+      "C02",
+      "C14"
+    ]
+  ],
+  "representative_policy": "lowest C-label per config_hash; C02 is the canonical representative for the C02/C14 config_hash; C02/C14 are candidate replicates with unknown seed",
+  "retrieval_policy": "SourceFaithfulness and AEC@k NOT_RECONSTRUCTABLE; excluded from principal inference",
+  "rules_version": "typed-critical-v2-template-aware",
+  "schema_version": "benchmark-v2-statistical-hyperparameter-analysis-1",
+  "significant_continuous_rows_after_holm": 3,
+  "significant_legalpass_pairs_after_holm": 1,
+  "statistical_correction": "binary critical metrics use exact McNemar as primary; representative terminology is canonical, not deterministic; failure decomposition added; no base legal outputs changed",
+  "v1_v2_spearman_factual_fidelity_vs_legalpass": -0.733432312346093
+}

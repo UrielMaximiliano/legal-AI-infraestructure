@@ -1,0 +1,121 @@
+config_a,config_b,changed_parameters,identifiable_single_parameter,interpretation
+C02,C03,rag_context;ollama_context,False,confounded; no isolated attribution
+C02,C04,top_k;pool;threshold,False,confounded; no isolated attribution
+C02,C05,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C02,C06,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C02,C07,embedding_model;rag_context;top_k;pool,False,confounded; no isolated attribution
+C02,C08,embedding_model;rag_context;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C02,C10,rag_context,True,controlled contrast
+C02,C11,rag_context;ollama_context,False,confounded; no isolated attribution
+C02,C12,embedding_model;rag_context,False,confounded; no isolated attribution
+C02,C13,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C02,C15,rag_context,True,controlled contrast
+C02,C16,rag_context,True,controlled contrast
+C02,C17,embedding_model;ollama_context,False,confounded; no isolated attribution
+C02,C18,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C02,C19,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C03,C04,rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C03,C05,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C03,C06,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C03,C07,embedding_model;rag_context;ollama_context;top_k;pool,False,confounded; no isolated attribution
+C03,C08,embedding_model;rag_context;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C03,C10,rag_context;ollama_context,False,confounded; no isolated attribution
+C03,C11,rag_context,True,controlled contrast
+C03,C12,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C03,C13,embedding_model;rag_context,False,confounded; no isolated attribution
+C03,C15,ollama_context,True,controlled contrast
+C03,C16,rag_context;ollama_context,False,confounded; no isolated attribution
+C03,C17,embedding_model;rag_context,False,confounded; no isolated attribution
+C03,C18,embedding_model,True,controlled contrast
+C03,C19,embedding_model;rag_context,False,confounded; no isolated attribution
+C04,C05,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C06,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C04,C07,embedding_model;rag_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C08,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C10,rag_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C11,rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C12,embedding_model;rag_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C13,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C15,rag_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C16,rag_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C17,embedding_model;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C18,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C04,C19,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C05,C06,top_k;pool;threshold,False,confounded; no isolated attribution
+C05,C07,rag_context;ollama_context;top_k;pool,False,confounded; no isolated attribution
+C05,C08,pool;threshold,False,confounded; no isolated attribution
+C05,C10,embedding_model;ollama_context,False,confounded; no isolated attribution
+C05,C11,embedding_model;ollama_context,False,confounded; no isolated attribution
+C05,C12,ollama_context,True,controlled contrast
+C05,C13,ollama_context,True,controlled contrast
+C05,C15,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C05,C16,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C05,C17,rag_context;ollama_context,False,confounded; no isolated attribution
+C05,C18,rag_context;ollama_context,False,confounded; no isolated attribution
+C05,C19,rag_context;ollama_context,False,confounded; no isolated attribution
+C06,C07,rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C08,top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C10,embedding_model;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C11,embedding_model;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C12,ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C13,ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C15,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C16,embedding_model;rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C17,rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C18,rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C06,C19,rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C07,C08,rag_context;ollama_context;top_k;pool;threshold,False,confounded; no isolated attribution
+C07,C10,embedding_model;rag_context;top_k;pool,False,confounded; no isolated attribution
+C07,C11,embedding_model;rag_context;ollama_context;top_k;pool,False,confounded; no isolated attribution
+C07,C12,rag_context;top_k;pool,False,confounded; no isolated attribution
+C07,C13,rag_context;ollama_context;top_k;pool,False,confounded; no isolated attribution
+C07,C15,embedding_model;rag_context;top_k;pool,False,confounded; no isolated attribution
+C07,C16,embedding_model;rag_context;top_k;pool,False,confounded; no isolated attribution
+C07,C17,rag_context;ollama_context;top_k;pool,False,confounded; no isolated attribution
+C07,C18,rag_context;ollama_context;top_k;pool,False,confounded; no isolated attribution
+C07,C19,rag_context;ollama_context;top_k;pool,False,confounded; no isolated attribution
+C08,C10,embedding_model;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C11,embedding_model;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C12,ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C13,ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C15,embedding_model;rag_context;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C16,embedding_model;rag_context;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C17,rag_context;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C18,rag_context;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C08,C19,rag_context;ollama_context;pool;threshold,False,confounded; no isolated attribution
+C10,C11,ollama_context,True,controlled contrast
+C10,C12,embedding_model,True,controlled contrast
+C10,C13,embedding_model;ollama_context,False,confounded; no isolated attribution
+C10,C15,rag_context,True,controlled contrast
+C10,C16,rag_context,True,controlled contrast
+C10,C17,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C10,C18,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C10,C19,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C11,C12,embedding_model;ollama_context,False,confounded; no isolated attribution
+C11,C13,embedding_model,True,controlled contrast
+C11,C15,rag_context;ollama_context,False,confounded; no isolated attribution
+C11,C16,rag_context;ollama_context,False,confounded; no isolated attribution
+C11,C17,embedding_model;rag_context,False,confounded; no isolated attribution
+C11,C18,embedding_model;rag_context,False,confounded; no isolated attribution
+C11,C19,embedding_model;rag_context,False,confounded; no isolated attribution
+C12,C13,ollama_context,True,controlled contrast
+C12,C15,embedding_model;rag_context,False,confounded; no isolated attribution
+C12,C16,embedding_model;rag_context,False,confounded; no isolated attribution
+C12,C17,rag_context;ollama_context,False,confounded; no isolated attribution
+C12,C18,rag_context;ollama_context,False,confounded; no isolated attribution
+C12,C19,rag_context;ollama_context,False,confounded; no isolated attribution
+C13,C15,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C13,C16,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C13,C17,rag_context,True,controlled contrast
+C13,C18,rag_context,True,controlled contrast
+C13,C19,rag_context,True,controlled contrast
+C15,C16,rag_context,True,controlled contrast
+C15,C17,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C15,C18,embedding_model;ollama_context,False,confounded; no isolated attribution
+C15,C19,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C16,C17,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C16,C18,embedding_model;rag_context;ollama_context,False,confounded; no isolated attribution
+C16,C19,embedding_model;ollama_context,False,confounded; no isolated attribution
+C17,C18,rag_context,True,controlled contrast
+C17,C19,rag_context,True,controlled contrast
+C18,C19,rag_context,True,controlled contrast
