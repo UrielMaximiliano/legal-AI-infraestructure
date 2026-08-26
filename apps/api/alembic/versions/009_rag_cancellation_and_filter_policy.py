@@ -45,7 +45,7 @@ def upgrade() -> None:
         "length(filters_sanitized->>'organization') <= 200 AND "
         "filters_sanitized->>'organization' !~* "
         "'(authorization|bearer|token|query|storage_path|raw_content|"
-        "normalized_content|embedding|vector)')",
+        "normalized_content|embedding|vector)'))",
     )
     op.drop_constraint(
         "ck_rag_generation_runs_status", "rag_generation_runs", type_="check"
@@ -116,7 +116,7 @@ def downgrade() -> None:
         "length(filters_sanitized->>'organization') <= 200 AND "
         "filters_sanitized->>'organization' !~* "
         "'(authorization|bearer|token|query|storage_path|raw_content|"
-        "normalized_content|embedding|vector)')",
+        "normalized_content|embedding|vector)'))",
     )
     op.drop_index("uq_rag_runs_idempotency_active", table_name="rag_generation_runs")
     op.create_index(
