@@ -96,6 +96,15 @@ class CorpusDocumentRepository(Protocol):
         offset: int = 0,
     ) -> Sequence[CorpusDocument]: ...
 
+    async def count_eligible_reviewed_documents(
+        self,
+        *,
+        evaluation_split: str = "INDEX_90",
+        document_type: str | None = None,
+        document_subtype: str | None = None,
+        jurisdiction: str | None = None,
+    ) -> int: ...
+
 
 class CorpusChunkRepository(Protocol):
     async def create(self, chunk: CorpusChunk) -> CorpusChunk: ...

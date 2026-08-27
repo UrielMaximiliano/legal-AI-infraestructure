@@ -37,7 +37,11 @@ def _get_health_service() -> HealthService:
 
 
 async def _rag_generation_readiness() -> RagGenerationReadiness:
-    """Report configuration and the effective reviewed INDEX_90 corpus."""
+    """Report configuration and the effective reviewed INDEX_90 corpus.
+
+    The readiness probe checks whether the operational split exists. The
+    generation request applies its own validated taxonomy filters later.
+    """
 
     try:
         ollama = settings.ollama

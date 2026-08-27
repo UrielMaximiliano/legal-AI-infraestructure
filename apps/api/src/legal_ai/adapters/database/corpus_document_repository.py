@@ -113,24 +113,35 @@ class SQLAlchemyCorpusDocumentRepository:
         self,
         *,
         evaluation_split: str = "INDEX_90",
-        document_type: str = "decreto",
-        document_subtype: str = "designacion_transitoria",
-        jurisdiction: str = "nacion",
+        document_type: str | None = None,
+        document_subtype: str | None = None,
+        jurisdiction: str | None = None,
     ) -> int:
-        """Count active documents allowed by the RAG retrieval policy."""
+        """Count active reviewed documents available in an evaluation split.
+
+        Readiness is a corpus-capability check, so it must not assume one
+        document taxonomy. Concrete retrieval requests still apply their
+        validated document type, subtype, and jurisdiction filters.
+        """
+
+        predicates = [
+            CorpusDocumentModel.review_status == ReviewStatus.REVIEWED.value,
+            CorpusDocumentModel.active_generation.is_not(None),
+            CorpusDocumentModel.metadata_json["evaluation_split"].as_string()
+            == evaluation_split,
+        ]
+        for column, value in (
+            (CorpusDocumentModel.document_type, document_type),
+            (CorpusDocumentModel.document_subtype, document_subtype),
+            (CorpusDocumentModel.jurisdiction, jurisdiction),
+        ):
+            if value is not None:
+                predicates.append(column == value)
 
         result = await self._session.scalar(
             select(func.count())
             .select_from(CorpusDocumentModel)
-            .where(
-                CorpusDocumentModel.document_type == document_type,
-                CorpusDocumentModel.document_subtype == document_subtype,
-                CorpusDocumentModel.jurisdiction == jurisdiction,
-                CorpusDocumentModel.review_status == ReviewStatus.REVIEWED.value,
-                CorpusDocumentModel.active_generation.is_not(None),
-                CorpusDocumentModel.metadata_json["evaluation_split"].as_string()
-                == evaluation_split,
-            )
+            .where(*predicates)
         )
         return int(result or 0)
 
