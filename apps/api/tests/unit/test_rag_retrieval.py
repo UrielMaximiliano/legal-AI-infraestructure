@@ -111,6 +111,44 @@ async def test_retrieval_is_reviewed_index90_and_diversified() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retrieval_never_selects_more_than_top_k() -> None:
+    candidates = tuple(
+        _candidate(
+            document_id=uuid4(),
+            score=0.9 - (index * 0.01),
+            section="CONSIDERANDO",
+            index=index,
+        )
+        for index in range(6)
+    )
+    vector_search = _VectorSearch(candidates)
+
+    service = RagRetrievalService(
+        uow_factory=lambda: _Uow(vector_search),
+        embedding_provider=FakeEmbeddingProvider(),
+        max_chunks_per_document=2,
+        max_chunks_per_section=2,
+    )
+    result = await service.retrieve(
+        "mantenimiento de computadoras",
+        filters={
+            "document_type": "decreto",
+            "jurisdiction": "nacion",
+            "review_status": "REVIEWED",
+            "evaluation_split": "INDEX_90",
+        },
+        top_k=3,
+        candidate_pool_size=6,
+        minimum_score=0.0,
+    )
+
+    assert sum(
+        source.disposition is RagSourceDisposition.SELECTED
+        for source in result.sources
+    ) == 3
+
+
+@pytest.mark.asyncio
 async def test_retrieval_rejects_unapproved_corpus_policy() -> None:
     service = RagRetrievalService(
         embedding_provider=FakeEmbeddingProvider(),

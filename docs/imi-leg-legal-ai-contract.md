@@ -31,9 +31,19 @@ reenviar un actor elegido por el navegador.
 - `GET /api/v1/drafts` lista borradores globalmente con paginación y filtros de
   texto, tipo y expediente.
 
-Los tipos `disposicion` y `decreto` se derivan de la plantilla. El RAG deriva
-el subtipo del expediente, usa jurisdicción `corrientes` y restringe la
-recuperación a documentos `REVIEWED`, chunks `ACTIVE` y `INDEX_90`.
+Los dos modelos activos del IMI son `disposicion` y `nota_inicio`; ambos se
+derivan de la plantilla seleccionada. `decreto` queda únicamente para lectura
+compatible de documentos históricos. Para IMI, el RAG reutiliza el índice legal
+aislado de decretos revisados, sin mezclarlo con la base transaccional; usa la
+política de fuentes configurada en el perfil IMI y restringe la recuperación a
+documentos `REVIEWED`, chunks `ACTIVE` y `INDEX_90`.
+
+La disposición conserva su encabezado, `VISTO`, `CONSIDERANDO`, `POR ELLO`,
+`DISPONE` y sus seis artículos. La nota conserva el encabezado de expediente,
+`INFORME DE INICIO DE ACTUACIONES` y sus dos párrafos institucionales. El
+`body_template` activo se incluye en el prompt como contrato estricto: el
+modelo solo puede completar placeholders, no reemplazar texto fijo ni alterar
+el orden.
 
 Cada edición crea una fila en `draft_document_versions`. La salida inicial de
 IA se guarda como `AI_GENERATED`; la redacción manual como `MANUAL`; y cada

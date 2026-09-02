@@ -51,6 +51,16 @@ uv.lock
 !apps/api/uv.lock
 .python-version
 
+# OpenTofu
+**/.terraform/
+*.tfstate
+*.tfstate.*
+!*.tfstate.example
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+
 # Documentation
 *.md
 !README.md

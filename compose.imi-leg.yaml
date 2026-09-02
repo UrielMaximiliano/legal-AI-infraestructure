@@ -1,0 +1,116 @@
+services:
+  imi-leg-api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:${IMI_LEG_API_HOST_PORT:-8001}:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_NAME: imi-leg-api
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      LEGAL_AI_RUNTIME_PROFILE: imi_leg_06b
+      LEGAL_AI_SERVICE_TOKEN: ${LEGAL_AI_SERVICE_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      POSTGRES_HOST: ${POSTGRES_HOST:-host.docker.internal}
+      POSTGRES_PORT: ${POSTGRES_PORT:-55432}
+      POSTGRES_DB: ${POSTGRES_DB:-legal_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-legal_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      IMI_CORE_POSTGRES_HOST: imi-core-postgres
+      IMI_CORE_POSTGRES_PORT: 5432
+      IMI_CORE_POSTGRES_DB: ${IMI_CORE_POSTGRES_DB:-imi_leg_core}
+      IMI_CORE_POSTGRES_USER: ${IMI_CORE_POSTGRES_USER:-imi_leg_core}
+      IMI_CORE_POSTGRES_PASSWORD: ${IMI_CORE_POSTGRES_PASSWORD:-change-me-core}
+      IMI_DISPOSITIONS_RAG_POSTGRES_HOST: imi-disposiciones-rag-postgres
+      IMI_DISPOSITIONS_RAG_POSTGRES_PORT: 5432
+      IMI_DISPOSITIONS_RAG_POSTGRES_DB: ${IMI_DISPOSITIONS_RAG_POSTGRES_DB:-imi_disposiciones_rag}
+      IMI_DISPOSITIONS_RAG_POSTGRES_USER: ${IMI_DISPOSITIONS_RAG_POSTGRES_USER:-imi_dispositions_rag}
+      IMI_DISPOSITIONS_RAG_POSTGRES_PASSWORD: ${IMI_DISPOSITIONS_RAG_POSTGRES_PASSWORD:-change-me-dispositions}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_API_TOKEN: ${OLLAMA_API_TOKEN:-}
+      OLLAMA_EMBEDDING_BASE_URL: ${OLLAMA_EMBEDDING_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
+      OLLAMA_EMBEDDING_TOKEN: ${OLLAMA_EMBEDDING_TOKEN:-${OLLAMA_API_TOKEN:-}}
+      OLLAMA_EMBEDDING_MODEL: qwen3-embedding:0.6b
+      OLLAMA_EMBEDDING_ENDPOINT: ${OLLAMA_EMBEDDING_ENDPOINT:-/api/embed}
+      OLLAMA_EMBEDDING_TIMEOUT_SECONDS: ${OLLAMA_EMBEDDING_TIMEOUT_SECONDS:-120}
+      OLLAMA_EMBEDDING_CONTEXT_LENGTH: 2048
+      EMBEDDING_DIMENSIONS: 1024
+      OLLAMA_GENERATION_BASE_URL: ${OLLAMA_GENERATION_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_GENERATION_ENDPOINT: ${OLLAMA_GENERATION_ENDPOINT:-/api/chat}
+      OLLAMA_GENERATION_MODEL: qwen3.6:35b
+      OLLAMA_GENERATION_TOKEN: ${OLLAMA_GENERATION_TOKEN:-${OLLAMA_API_TOKEN:-}}
+      OLLAMA_GENERATION_TIMEOUT_SECONDS: ${OLLAMA_GENERATION_TIMEOUT_SECONDS:-300}
+      OLLAMA_GENERATION_MAX_RETRIES: ${OLLAMA_GENERATION_MAX_RETRIES:-1}
+      OLLAMA_GENERATION_NUM_CTX: 16384
+      RAG_PROMPT_VERSION: ${RAG_PROMPT_VERSION:-rag-legal-document-v1}
+      RAG_SCHEMA_VERSION: ${RAG_SCHEMA_VERSION:-1}
+      RAG_TOP_K: 8
+      RAG_CANDIDATE_POOL_SIZE: 24
+      RAG_MINIMUM_SCORE: 0.0
+      RAG_MAX_CONTEXT_BYTES: ${RAG_MAX_CONTEXT_BYTES:-65536}
+      RAG_MAX_CONTEXT_TOKENS_ESTIMATE: 2048
+      RAG_MAX_CHUNKS_PER_DOCUMENT: ${RAG_MAX_CHUNKS_PER_DOCUMENT:-2}
+      RAG_MAX_CHUNKS_PER_SECTION: ${RAG_MAX_CHUNKS_PER_SECTION:-1}
+      RAG_SCHEMA_REPAIR_ATTEMPTS: ${RAG_SCHEMA_REPAIR_ATTEMPTS:-1}
+      RAG_REQUIRE_REVIEWED: true
+      RAG_REQUIRED_EVALUATION_SPLIT: INDEX_90
+      EXPORT_STORAGE_ROOT: /var/lib/legal-ai/exports
+    volumes:
+      - imi_leg_export_storage:/var/lib/legal-ai/exports
+    depends_on:
+      imi-core-postgres:
+        condition: service_healthy
+      imi-disposiciones-rag-postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  imi-core-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${IMI_CORE_POSTGRES_DB:-imi_leg_core}
+      POSTGRES_USER: ${IMI_CORE_POSTGRES_USER:-imi_leg_core}
+      POSTGRES_PASSWORD: ${IMI_CORE_POSTGRES_PASSWORD:-change-me-core}
+    ports:
+      - "127.0.0.1:${IMI_CORE_POSTGRES_HOST_PORT:-55434}:5432"
+    volumes:
+      - imi_core_postgres_data:/var/lib/postgresql/data
+      - ./infra/database/imi-core/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${IMI_CORE_POSTGRES_USER:-imi_leg_core} -d ${IMI_CORE_POSTGRES_DB:-imi_leg_core}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  imi-disposiciones-rag-postgres:
+    image: pgvector/pgvector:0.8.0-pg16
+    environment:
+      POSTGRES_DB: ${IMI_DISPOSITIONS_RAG_POSTGRES_DB:-imi_disposiciones_rag}
+      POSTGRES_USER: ${IMI_DISPOSITIONS_RAG_POSTGRES_USER:-imi_dispositions_rag}
+      POSTGRES_PASSWORD: ${IMI_DISPOSITIONS_RAG_POSTGRES_PASSWORD:-change-me-dispositions}
+    ports:
+      - "127.0.0.1:${IMI_DISPOSITIONS_RAG_POSTGRES_HOST_PORT:-55435}:5432"
+    volumes:
+      - imi_dispositions_rag_postgres_data:/var/lib/postgresql/data
+      - ./infra/database/imi-disposiciones-rag/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${IMI_DISPOSITIONS_RAG_POSTGRES_USER:-imi_dispositions_rag} -d ${IMI_DISPOSITIONS_RAG_POSTGRES_DB:-imi_disposiciones_rag}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  imi_core_postgres_data:
+  imi_dispositions_rag_postgres_data:
+  imi_leg_export_storage:

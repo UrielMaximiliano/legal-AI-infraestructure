@@ -52,6 +52,25 @@ class RagDraftGenerationRequest(BaseModel):
         return {key: item.strip() for key, item in value.items()}
 
 
+class RagTextRewriteRequest(BaseModel):
+    """Small assistive RAG request used to legalize one user-provided field."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: UUID
+    case_file_id: UUID | None = None
+    text: StrictStr = Field(min_length=1, max_length=5_000)
+    retrieval: RagRetrievalRequest = Field(default_factory=RagRetrievalRequest)
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        clean = value.strip()
+        if not clean:
+            raise ValueError("RAG_TEXT_EMPTY")
+        return clean
+
+
 class RagCitedParagraph(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -119,13 +138,13 @@ class RagStructuredDraft(BaseModel):
 
     schema_version: StrictInt = Field(json_schema_extra={"const": 1})
     title: StrictStr = Field(min_length=1, max_length=20_000)
-    visto: list[RagCitedParagraph] = Field(min_length=1)
-    considerandos: list[RagCitedParagraph] = Field(min_length=1)
-    dispositive_intro: StrictStr = Field(min_length=1, max_length=20_000)
-    articles: list[RagArticle] = Field(min_length=1)
-    closing: StrictStr = Field(min_length=1, max_length=20_000)
-    authority: StrictStr = Field(min_length=1, max_length=20_000)
-    signature: StrictStr = Field(min_length=1, max_length=20_000)
+    visto: list[RagCitedParagraph] = Field(default_factory=list)
+    considerandos: list[RagCitedParagraph] = Field(default_factory=list)
+    dispositive_intro: StrictStr = Field(default="", max_length=20_000)
+    articles: list[RagArticle] = Field(default_factory=list)
+    closing: StrictStr = Field(default="", max_length=20_000)
+    authority: StrictStr = Field(default="", max_length=20_000)
+    signature: StrictStr = Field(default="", max_length=20_000)
     sources: list[RagSource] = Field(min_length=1)
     warnings: list[StrictStr] = Field(min_length=1)
 
@@ -171,11 +190,15 @@ class RagStructuredDraft(BaseModel):
     def render_for_review(self) -> str:
         """Deterministically render the structured draft for the legacy Draft."""
 
-        lines = [self.title, "VISTO"]
-        lines.extend(f"- {paragraph.text}" for paragraph in self.visto)
-        lines.append("CONSIDERANDOS")
-        lines.extend(f"- {paragraph.text}" for paragraph in self.considerandos)
-        lines.append(self.dispositive_intro)
+        lines = [self.title]
+        if self.visto:
+            lines.append("VISTO")
+            lines.extend(f"- {paragraph.text}" for paragraph in self.visto)
+        if self.considerandos:
+            lines.append("CONSIDERANDOS")
+            lines.extend(f"- {paragraph.text}" for paragraph in self.considerandos)
+        if self.dispositive_intro:
+            lines.append(self.dispositive_intro)
         lines.extend(
             f"ARTICULO {article.number}. {article.text}" for article in self.articles
         )
@@ -223,6 +246,17 @@ class RagDraftGenerationResponse(BaseModel):
     rag_run_id: UUID
     draft: RagDraftSummary
     structured_draft: RagStructuredDraft
+    retrieval: RagRetrievalSummary
+    generation: RagGenerationSummary
+
+
+class RagTextRewriteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str
+    text: StrictStr = Field(min_length=1, max_length=20_000)
+    citation_ids: list[str]
+    sources: list[RagSource]
     retrieval: RagRetrievalSummary
     generation: RagGenerationSummary
 

@@ -23,14 +23,24 @@ from sqlalchemy.pool import NullPool
 
 from legal_ai.config import settings
 
-_engine: AsyncEngine | None = None
-_session_factory: async_sessionmaker[AsyncSession] | None = None
+_engines: dict[str, AsyncEngine] = {}
+_session_factories: dict[str, async_sessionmaker[AsyncSession]] = {}
 # ``get_session_factory`` may initialize the engine through ``get_engine``
 # while holding this lock, so re-entrancy is required during first access.
 _lock = threading.RLock()
 
 
-def create_engine() -> AsyncEngine:
+def _database_url(database: str) -> str:
+    if database == "legacy":
+        return settings.postgres.database_url
+    if database == "core":
+        return settings.core_postgres.database_url
+    if database == "imi_dispositions_rag":
+        return settings.dispositions_rag_postgres.database_url
+    raise ValueError("DATABASE_PROFILE_INVALID")
+
+
+def create_engine(database: str = "legacy") -> AsyncEngine:
     """Crea un engine async aislado, dueño de su propio pool.
 
     Reservado para procesos autónomos (CLIs, migraciones de Alembic, tests de
@@ -39,49 +49,53 @@ def create_engine() -> AsyncEngine:
     """
 
     return create_async_engine(
-        settings.postgres.database_url,
+        _database_url(database),
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
     )
 
 
-def get_engine() -> AsyncEngine:
+def get_engine(database: str = "legacy") -> AsyncEngine:
     """Devuelve el engine compartido de la aplicación, creándolo una vez."""
 
-    global _engine
-    if _engine is not None:
-        return _engine
+    engine = _engines.get(database)
+    if engine is not None:
+        return engine
     with _lock:
-        if _engine is None:
-            _engine = create_async_engine(
-                settings.postgres.database_url,
+        engine = _engines.get(database)
+        if engine is None:
+            engine = create_async_engine(
+                _database_url(database),
                 poolclass=NullPool,
             )
-    return _engine
+            _engines[database] = engine
+    return engine
 
 
-def get_session_factory() -> async_sessionmaker[AsyncSession]:
+def get_session_factory(database: str = "legacy") -> async_sessionmaker[AsyncSession]:
     """Devuelve la factoría de sesiones ligada al engine compartido."""
 
-    global _session_factory
-    if _session_factory is not None:
-        return _session_factory
+    factory = _session_factories.get(database)
+    if factory is not None:
+        return factory
     with _lock:
-        if _session_factory is None:
-            _session_factory = async_sessionmaker(
-                get_engine(),
+        factory = _session_factories.get(database)
+        if factory is None:
+            factory = async_sessionmaker(
+                get_engine(database),
                 expire_on_commit=False,
             )
-    return _session_factory
+            _session_factories[database] = factory
+    return factory
 
 
 async def dispose_engine() -> None:
     """Dispone el engine compartido; invocar sólo en el shutdown."""
 
-    global _engine, _session_factory
     with _lock:
-        engine, _engine = _engine, None
-        _session_factory = None
-    if engine is not None:
+        engines = tuple(_engines.values())
+        _engines.clear()
+        _session_factories.clear()
+    for engine in engines:
         await engine.dispose()

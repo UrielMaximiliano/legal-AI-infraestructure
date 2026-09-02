@@ -6,10 +6,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
+from legal_ai.adapters.database.imi_core import ImiCoreUnitOfWork
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.application.case_file_service import CaseFileService
+from legal_ai.config import settings
 from legal_ai.schemas.case_file import (
     CaseFileResponse,
     CreateCaseFileRequest,
@@ -21,6 +23,21 @@ from legal_ai.schemas.case_file import (
 from legal_ai.schemas.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/v1/case-files", tags=["case-files"])
+
+
+def _reject_legacy_write() -> None:
+    """Prevent IMI requests from silently writing to the legacy database."""
+    if settings.rag_profile.code == "imi_leg_06b":
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "IMI_CORE_WRITE_NOT_IMPLEMENTED",
+                "message": (
+                    "Las escrituras de expedientes de IMI requieren el repositorio "
+                    "imi_leg_core."
+                ),
+            },
+        )
 
 
 def _to_response(case_file: Any) -> CaseFileResponse:
@@ -66,6 +83,18 @@ async def create_case_file(
 ) -> CaseFileResponse:
     """Create a new case file."""
     request_id = getattr(request.state, "request_id", None)
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as uow:
+            if uow.core is None:
+                raise RuntimeError("IMI_CORE_UNAVAILABLE")
+            case_file = await uow.core.create_case_file(
+                employee_id=body.employee_id,
+                title=body.title,
+                case_type=body.case_type,
+                description=body.description,
+                request_id=request_id,
+            )
+        return _to_response(case_file)
     async with UnitOfWork() as uow:
         service = CaseFileService(uow)
         case_file = await service.create(
@@ -84,6 +113,16 @@ async def get_case_file(
     case_file_id: uuid.UUID,
 ) -> CaseFileResponse:
     """Get case file by ID."""
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as uow:
+            if uow.core is None:
+                raise RuntimeError("IMI_CORE_UNAVAILABLE")
+            case_file = await uow.core.get_case_file(case_file_id)
+        if case_file is None:
+            from legal_ai.application.case_file_service import CaseFileNotFoundError
+
+            raise CaseFileNotFoundError(case_file_id)
+        return _to_response(case_file)
     async with UnitOfWork() as uow:
         service = CaseFileService(uow)
         case_file = await service.get_by_id(case_file_id)
@@ -103,6 +142,24 @@ async def list_case_files(
     opened_to: datetime | None = None,
 ) -> PaginatedResponse[CaseFileResponse]:
     """List case files with pagination and filters."""
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as uow:
+            if uow.core is None:
+                raise RuntimeError("IMI_CORE_UNAVAILABLE")
+            case_files, total = await uow.core.list_case_files(
+                page=page,
+                page_size=page_size,
+                query=query,
+                employee_id=employee_id,
+                status=status,
+                case_type=case_type,
+            )
+        return PaginatedResponse(
+            page=page,
+            page_size=page_size,
+            total=total,
+            items=[_to_response(cf) for cf in case_files],
+        )
     async with UnitOfWork() as uow:
         service = CaseFileService(uow)
         case_files, total = await service.list(
@@ -130,6 +187,7 @@ async def update_case_file(
     body: UpdateCaseFileRequest,
 ) -> CaseFileResponse:
     """Partial update of case file fields with optimistic locking."""
+    _reject_legacy_write()
     async with UnitOfWork() as uow:
         service = CaseFileService(uow)
         case_file = await service.update(
@@ -151,6 +209,7 @@ async def transition_case_file(
     body: TransitionRequest,
 ) -> CaseFileResponse:
     """Execute a state transition on a case file."""
+    _reject_legacy_write()
     request_id = getattr(request.state, "request_id", None)
     async with UnitOfWork() as uow:
         service = CaseFileService(uow)
@@ -171,6 +230,17 @@ async def get_case_file_history(
     case_file_id: uuid.UUID,
 ) -> HistoryResponse:
     """Get case file history."""
+    if settings.rag_profile.code == "imi_leg_06b":
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "IMI_CORE_HISTORY_NOT_IMPLEMENTED",
+                "message": (
+                    "El historial de expedientes de IMI todavía no está expuesto "
+                    "desde imi_leg_core."
+                ),
+            },
+        )
     async with UnitOfWork() as uow:
         service = CaseFileService(uow)
         history = await service.get_history(case_file_id)

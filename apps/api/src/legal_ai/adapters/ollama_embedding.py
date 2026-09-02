@@ -46,11 +46,11 @@ class OllamaEmbeddingAdapter:
         max_retries: int = 2,
         endpoint: str = EMBEDDING_ENDPOINT_BATCH,
         context_length: int = 2048,
+        contract_model: str = EMBEDDING_MODEL,
+        contract_dimensions: int = EMBEDDING_DIMENSIONS,
     ) -> None:
-        if dimensions != EMBEDDING_DIMENSIONS:
-            raise ValueError(
-                f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}"
-            )
+        if model != contract_model or dimensions != contract_dimensions:
+            raise ValueError("OLLAMA_EMBEDDING_CONTRACT_INVALID")
         if not model or not api_token:
             raise ValueError("OLLAMA_EMBEDDING_CONFIGURATION_INVALID")
         if context_length <= 0 or context_length > 32768:

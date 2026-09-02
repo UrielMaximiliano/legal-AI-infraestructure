@@ -7,6 +7,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.application.inference_coordinator import (
@@ -39,26 +40,30 @@ class RagRetrievalService:
     def __init__(
         self,
         *,
-        uow_factory: Callable[[], UnitOfWork] = UnitOfWork,
+        uow_factory: Callable[[], Any] = UnitOfWork,
         embedding_provider: EmbeddingProvider,
         inference_coordinator: InferenceCoordinator | None = None,
         context_assembler: ContextAssembler | None = None,
         embedding_model: str = "qwen3-embedding:4b-q4_K_M",
         embedding_dimensions: int = 2560,
+        embedding_timeout_seconds: float = 30.0,
         max_chunks_per_document: int = 2,
         max_chunks_per_section: int = 1,
     ) -> None:
-        if (
-            embedding_model != "qwen3-embedding:4b-q4_K_M"
-            or embedding_dimensions != 2560
-        ):
+        if (embedding_model, embedding_dimensions) not in {
+            ("qwen3-embedding:4b-q4_K_M", 2560),
+            ("qwen3-embedding:0.6b", 1024),
+        }:
             raise ValueError("RAG_EMBEDDING_CONTRACT_INVALID")
+        if embedding_timeout_seconds <= 0:
+            raise ValueError("RAG_EMBEDDING_TIMEOUT_INVALID")
         self._uow_factory = uow_factory
         self._embedding_provider = embedding_provider
         self._coordinator = inference_coordinator
         self._context_assembler = context_assembler or ContextAssembler()
         self.embedding_model = embedding_model
         self.embedding_dimensions = embedding_dimensions
+        self.embedding_timeout_seconds = embedding_timeout_seconds
         self.max_chunks_per_document = max(1, max_chunks_per_document)
         self.max_chunks_per_section = max(1, max_chunks_per_section)
 
@@ -79,6 +84,7 @@ class RagRetrievalService:
         self,
         candidates: Sequence[SemanticSearchCandidate],
         *,
+        top_k: int,
         minimum_score: float,
     ) -> tuple[RagRetrievedSource, ...]:
         ordered = sorted(candidates, key=self._candidate_key)
@@ -90,7 +96,7 @@ class RagRetrievalService:
             disposition = RagSourceDisposition.SELECTED
             if candidate.similarity_score < minimum_score:
                 disposition = RagSourceDisposition.EXCLUDED_SCORE
-            elif document_counts[
+            elif selected_count >= top_k or document_counts[
                 candidate.document_id
             ] >= self.max_chunks_per_document or (
                 section_counts[(candidate.document_id, candidate.section_type)]
@@ -162,7 +168,9 @@ class RagRetrievalService:
                 return await self._embedding_provider.embed_query(normalized_query)
 
             query_vector = await coordinator.execute(
-                InferencePriority.SEARCH, embed, timeout=30
+                InferencePriority.SEARCH,
+                embed,
+                timeout=self.embedding_timeout_seconds,
             )
             async with self._uow_factory() as uow:
                 candidates = await uow.vector_search.search(
@@ -178,7 +186,11 @@ class RagRetrievalService:
                 for candidate in candidates
                 if isinstance(candidate, SemanticSearchCandidate)
             )
-            sources = self._select(typed, minimum_score=minimum_score)
+            sources = self._select(
+                typed,
+                top_k=top_k,
+                minimum_score=minimum_score,
+            )
             context = self._context_assembler.assemble(sources)
             return RagRetrievalResult(
                 query_hash=sha256_text(normalized_query),

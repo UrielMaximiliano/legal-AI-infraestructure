@@ -29,7 +29,7 @@ class DependencyHealthSchema(BaseModel):
 
 
 class RagGenerationReadiness(BaseModel):
-    """Sanitized readiness for the two contractual RAG models."""
+    """Sanitized readiness for the active RAG profile."""
 
     status: str
     generation_model: str
@@ -37,6 +37,12 @@ class RagGenerationReadiness(BaseModel):
     dimensions: int
     eligible_reviewed_documents: int = 0
     error_code: str | None = None
+    profile_code: str | None = None
+    rag_database: str | None = None
+    core_database: str | None = None
+    embedding_context_length: int | None = None
+    rag_context_length: int | None = None
+    generation_context_length: int | None = None
 
 
 class HealthReadyResponse(BaseModel):

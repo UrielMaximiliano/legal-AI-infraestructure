@@ -63,6 +63,33 @@ def test_idempotency_header_is_strict() -> None:
         rag_routes.rag_idempotency_key("too-short")
 
 
+def test_allowed_template_variables_include_optional_body_placeholders() -> None:
+    template = SimpleNamespace(
+        variables=["fecha"],
+        body_template="Fecha: {{fecha}}; beneficiario: {{beneficiario}}",
+    )
+
+    allowed = rag_routes._allowed_template_variables(template)
+
+    assert allowed == {"fecha", "beneficiario"}
+    assert "inventada" not in allowed
+
+
+def test_concept_rewrite_validation_rejects_facts_not_present_in_input() -> None:
+    assert rag_routes._validate_concept_rewrite(
+        "mantenimiento de computadoras",
+        "servicio de mantenimiento integral de equipos informáticos",
+    ) == "servicio de mantenimiento integral de equipos informáticos"
+    assert rag_routes._validate_concept_rewrite(
+        "mantenimiento de computadoras",
+        "Se establece el gasto en el Programa 20 mediante Decreto 798/2026.",
+    ) is None
+    assert rag_routes._validate_concept_rewrite(
+        "mantenimiento de computadoras",
+        "adquisición de vehículos oficiales",
+    ) is None
+
+
 @pytest.mark.asyncio
 async def test_get_run_returns_sanitized_trace(monkeypatch) -> None:
     run = _run()
@@ -173,6 +200,128 @@ async def test_generate_endpoint_returns_pending_review_and_legacy_safe_fields(
     assert payload["draft"]["status"] == "generado"
     assert payload["draft"]["id"] == str(draft_id)
     assert "vector" not in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_rewrite_endpoint_returns_validated_text_and_reviewed_sources(
+    monkeypatch,
+) -> None:
+    template_id = uuid4()
+    captured: dict[str, object] = {}
+    source = SimpleNamespace(
+        disposition=SimpleNamespace(value="SELECTED"),
+        citation_id="SRC-001",
+        external_id="DEC-1",
+        title="Decreto revisado",
+        excerpt="Texto jurídico revisado.",
+        publication_date=None,
+        section_type="CONSIDERANDO",
+        source_url=None,
+    )
+
+    class _Retrieval:
+        async def retrieve(self, query, **kwargs):
+            captured["query"] = query
+            captured["filters"] = kwargs["filters"]
+            return SimpleNamespace(
+                sources=(source,),
+                embedding_model="qwen3-embedding:0.6b",
+                embedding_dimensions=1024,
+            )
+
+    class _Provider:
+        async def generate_structured(self, **kwargs):
+            captured["system_message"] = kwargs["system_message"]
+            return {
+                "text": "prestación del servicio de mantenimiento integral",
+                "citation_ids": ["SRC-001"],
+            }
+
+    class _Coordinator:
+        async def execute(self, priority, operation, *, timeout):
+            del priority
+            captured["timeout"] = timeout
+            return await operation()
+
+    service = SimpleNamespace(
+        _retrieval=_Retrieval(),
+        _provider=_Provider(),
+        _generation_context_length=16_384,
+        _generation_model="qwen3.6:35b",
+    )
+
+    async def _template_context(*args):
+        assert args == (template_id,)
+        return object()
+
+    monkeypatch.setattr(rag_routes, "_validate_template_context", _template_context)
+    monkeypatch.setattr(
+        rag_routes,
+        "_query_context",
+        lambda *args: {
+            "document_type": "decreto",
+            "document_subtype": None,
+            "jurisdiction": "nacion",
+            "target_document_type": "disposicion",
+        },
+    )
+    monkeypatch.setattr(rag_routes, "_build_service", lambda: (service, _Coordinator()))
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/rag/text/rewrite",
+            json={
+                "template_id": str(template_id),
+                "text": "mantenimiento de computadoras",
+                "retrieval": {"top_k": 8, "minimum_score": 0},
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["text"] == "prestación del servicio de mantenimiento integral"
+    assert payload["citation_ids"] == ["SRC-001"]
+    assert payload["retrieval"]["embedding_dimensions"] == 1024
+    assert captured["query"] == "mantenimiento de computadoras"
+    assert "Concepto de una Disposición por Fondo Permanente" in str(
+        captured["system_message"]
+    )
+    assert payload["generation"]["prompt_version"].endswith(
+        ":text-rewrite:disposicion"
+    )
+    assert captured["filters"] == {
+        "document_type": "decreto",
+        "jurisdiction": "nacion",
+        "review_status": "REVIEWED",
+        "evaluation_split": "INDEX_90",
+    }
+    assert captured["timeout"] == 300
+
+
+def test_rewrite_prompt_is_specific_to_nota_inicio() -> None:
+    prompt = rag_routes._rewrite_prompt("nota_inicio")
+
+    assert "Razón de la actuación de una Nota de Inicio" in prompt
+    assert "motivo concreto por el cual se inician las actuaciones" in prompt
+    assert "comienza exactamente con 'proceso de'" in prompt
+    assert "Concepto de una Disposición" not in prompt
+
+
+def test_nota_rewrite_is_grammatical_after_fixed_article() -> None:
+    assert rag_routes._normalize_rewrite_for_target(
+        "incorporación de becarios para tareas administrativas",
+        "nota_inicio",
+    ) == "proceso de incorporación de becarios para tareas administrativas"
+    assert rag_routes._normalize_rewrite_for_target(
+        "servicio de mantenimiento de computadoras",
+        "nota_inicio",
+    ) == "servicio de mantenimiento de computadoras"
+    assert rag_routes._normalize_rewrite_for_target(
+        "incorporación de becarios",
+        "disposicion",
+    ) == "incorporación de becarios"
 
 
 def _structured():

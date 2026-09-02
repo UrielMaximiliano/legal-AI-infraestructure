@@ -19,7 +19,11 @@ from legal_ai.api.exceptions import (
     service_error_handler,
     validation_error_handler,
 )
-from legal_ai.api.middleware import RagSecurityMiddleware, ServiceTokenMiddleware
+from legal_ai.api.middleware import (
+    ImiRuntimeBoundaryMiddleware,
+    RagSecurityMiddleware,
+    ServiceTokenMiddleware,
+)
 from legal_ai.api.router import router
 from legal_ai.api.routes.generation import GenerationAttemptNotFoundError
 from legal_ai.api.routes.rag import close_rag_coordinator
@@ -94,8 +98,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Gestión del lifespan de la aplicación."""
     setup_logging(settings.logging.level)
     try:
-        async with UnitOfWork() as uow:
-            await uow.rag_runs.close_orphaned()
+        if settings.rag_profile.code != "imi_leg_06b":
+            async with UnitOfWork() as uow:
+                await uow.rag_runs.close_orphaned()
         yield
     finally:
         await close_rag_coordinator()
@@ -111,6 +116,7 @@ app = FastAPI(
 # RequestContextMiddleware remains outermost so rejected requests still receive a
 # sanitized correlation id. ServiceTokenMiddleware validates the private BFF token
 # when one is configured for API routes.
+app.add_middleware(ImiRuntimeBoundaryMiddleware)
 app.add_middleware(RagSecurityMiddleware)
 app.add_middleware(ServiceTokenMiddleware)
 app.add_middleware(RequestContextMiddleware)

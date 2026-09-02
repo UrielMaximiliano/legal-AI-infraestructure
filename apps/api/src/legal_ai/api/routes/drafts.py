@@ -4,20 +4,25 @@ from __future__ import annotations
 
 import json
 from hashlib import sha256
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
+from legal_ai.adapters.database.imi_core import ImiCoreUnitOfWork
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.api.dependencies import required_idempotency_key
-from legal_ai.application.draft_service import DraftService
+from legal_ai.application.draft_service import DraftNotFoundError, DraftService
 from legal_ai.application.finalization_service import FinalizationService
 from legal_ai.application.preview_service import PreviewService
 from legal_ai.application.structured_document_service import StructuredDocumentService
+from legal_ai.config import settings
 from legal_ai.domain.enums import GenerationStatus
+from legal_ai.domain.errors import DraftDocumentNotFoundError
 from legal_ai.schemas.document import (
     CreateManualDraftRequest,
     DraftDocumentResponse,
+    LegalDocument,
     UpdateDraftDocumentRequest,
 )
 from legal_ai.schemas.draft import (
@@ -33,6 +38,17 @@ from legal_ai.schemas.finalization import FinalizationResponse, FinalizeDraftReq
 from legal_ai.schemas.pagination import PaginatedResponse
 
 router = APIRouter(tags=["drafts"])
+
+
+def _normalize_document_value(value: Any) -> Any:
+    """Make persisted corpus text safe for the strict editor contract."""
+    if isinstance(value, str):
+        return value.encode("utf-8", "replace").decode("utf-8")
+    if isinstance(value, list):
+        return [_normalize_document_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _normalize_document_value(item) for key, item in value.items()}
+    return value
 
 
 @router.post(
@@ -97,6 +113,23 @@ async def list_all_drafts(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> PaginatedResponse[DraftResponse]:
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as core_uow:
+            items, total = await core_uow.core.list_drafts(
+                page=page,
+                page_size=page_size,
+                query=query,
+                document_type=document_type,
+                case_file_id=case_file_id,
+            ) if core_uow.core is not None else ([], 0)
+        return PaginatedResponse(
+            page=page,
+            page_size=page_size,
+            total=total,
+            request_id=str(getattr(request.state, "request_id", "")),
+            items=[DraftResponse.model_validate(item) for item in items],
+        )
+
     async with UnitOfWork() as uow:
         items, total = await uow.drafts.list_all(
             query_text=query,
@@ -131,6 +164,25 @@ async def create_manual_draft(
     payload_hash = sha256(
         json.dumps(body.model_dump(mode="json"), sort_keys=True).encode("utf-8")
     ).hexdigest()
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as core_uow:
+            draft = await core_uow.core.create_manual_draft(
+                template_id=body.template_id,
+                case_file_id=body.case_file_id,
+                variables=body.variables,
+                document=body.document,
+                actor=actor or "imi-leg",
+                idempotency_key=idempotency_key,
+                request_hash=payload_hash,
+                request_id=str(getattr(request.state, "request_id", "")),
+            ) if core_uow.core is not None else None
+        if draft is None:
+            raise DraftDocumentNotFoundError(
+                details={"template_id": str(body.template_id)}
+            )
+        response.status_code = 201
+        return DraftResponse.model_validate(draft)
+
     async with UnitOfWork() as uow:
         existing = await uow.drafts.get_by_idempotency_key(idempotency_key)
         if existing is not None:
@@ -159,6 +211,34 @@ async def create_manual_draft(
     responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
 async def get_draft_document(draft_id: UUID) -> DraftDocumentResponse:
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as core_uow:
+            draft = (
+                await core_uow.core.get_draft(draft_id)
+                if core_uow.core is not None
+                else None
+            )
+        if draft is None or draft.document is None:
+            raise DraftDocumentNotFoundError(details={"draft_id": str(draft_id)})
+        try:
+            payload = _normalize_document_value(dict(draft.document))
+            payload.setdefault("document_type", draft.document_type)
+            payload.setdefault("locale", "es-AR")
+            payload.setdefault("institutional_header", "IMI")
+            document = LegalDocument.model_validate(payload)
+        except (TypeError, ValueError) as exc:
+            raise DraftDocumentNotFoundError(
+                details={"draft_id": str(draft_id)}
+            ) from exc
+        return DraftDocumentResponse(
+            draft_id=draft.id,
+            draft_version=draft.version,
+            document=document,
+            source=str(draft.context_snapshot.get("source_code", "AI")),
+            document_hash=draft.context_hash,
+            updated_at=draft.updated_at,
+        )
+
     async with UnitOfWork() as uow:
         draft, document, version = await StructuredDocumentService(uow).get(draft_id)
     return DraftDocumentResponse(
@@ -182,6 +262,29 @@ async def update_draft_document(
     body: UpdateDraftDocumentRequest,
     actor: str | None = Header(None, alias="X-Actor"),
 ) -> DraftDocumentResponse:
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as core_uow:
+            draft = (
+                await core_uow.core.update_document(
+                    draft_id=draft_id,
+                    expected_version=body.expected_version,
+                    document=body.document,
+                    actor=actor or "imi-leg",
+                )
+                if core_uow.core is not None
+                else None
+            )
+        if draft is None:
+            raise DraftDocumentNotFoundError(details={"draft_id": str(draft_id)})
+        return DraftDocumentResponse(
+            draft_id=draft.id,
+            draft_version=draft.version,
+            document=body.document,
+            source="EDITED",
+            document_hash=draft.context_hash,
+            updated_at=draft.updated_at,
+        )
+
     async with UnitOfWork() as uow:
         draft, document, version = await StructuredDocumentService(uow).update(
             draft_id=draft_id,
@@ -299,6 +402,17 @@ async def get_draft(
     request: Request,
     draft_id: UUID,
 ) -> DraftResponse:
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as core_uow:
+            draft = (
+                await core_uow.core.get_draft(draft_id)
+                if core_uow.core is not None
+                else None
+            )
+        if draft is None:
+            raise DraftNotFoundError(str(draft_id))
+        return DraftResponse.model_validate(draft)
+
     async with UnitOfWork() as uow:
         service = DraftService(uow)
         draft = await service.get_draft(str(draft_id))

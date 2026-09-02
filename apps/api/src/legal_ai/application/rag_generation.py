@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar, cast
 
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
@@ -42,6 +45,10 @@ from legal_ai.schemas.rag import (
     RagStructuredDraft,
     rag_schema,
 )
+
+logger = logging.getLogger(__name__)
+
+PayloadT = TypeVar("PayloadT")
 
 
 class RagGenerationError(DomainError):
@@ -250,15 +257,24 @@ class RagGenerationService:
         generation_model: str = "qwen3.6:35b",
         embedding_model: str = "qwen3-embedding:4b-q4_K_M",
         embedding_dimensions: int = 2560,
+        profile_code: str = "legacy",
+        candidate_pool_size: int = 24,
+        generation_context_length: int = 16_384,
         inference_coordinator: InferenceCoordinator | None = None,
     ) -> None:
         if generation_model != "qwen3.6:35b":
             raise ValueError("RAG_GENERATION_MODEL_INVALID")
-        if (
-            embedding_model != "qwen3-embedding:4b-q4_K_M"
-            or embedding_dimensions != 2560
-        ):
+        expected_contracts = {
+            "legacy": ("qwen3-embedding:4b-q4_K_M", 2560),
+            "imi_leg_06b": ("qwen3-embedding:0.6b", 1024),
+        }
+        expected = expected_contracts.get(profile_code)
+        if expected is None or (embedding_model, embedding_dimensions) != expected:
             raise ValueError("RAG_EMBEDDING_CONTRACT_INVALID")
+        if candidate_pool_size < 3 or candidate_pool_size > 50:
+            raise ValueError("RAG_RETRIEVAL_LIMIT_INVALID")
+        if generation_context_length <= 0:
+            raise ValueError("OLLAMA_GENERATION_CONTEXT_INVALID")
         self._retrieval = retrieval
         self._provider = provider
         self._audit = audit or InMemoryRagAuditStore()
@@ -267,12 +283,15 @@ class RagGenerationService:
         self._generation_model = generation_model
         self._embedding_model = embedding_model
         self._embedding_dimensions = embedding_dimensions
+        self._profile_code = profile_code
+        self._candidate_pool_size = candidate_pool_size
+        self._generation_context_length = generation_context_length
         self._coordinator = inference_coordinator
 
     def _request_hash(
         self,
         request: RagDraftGenerationRequest,
-        query_context: dict[str, str] | None = None,
+        query_context: dict[str, str | None] | None = None,
     ) -> str:
         return sha256_json(
             {
@@ -285,9 +304,67 @@ class RagGenerationService:
                 "embedding_model": self._embedding_model,
                 "embedding_dimensions": self._embedding_dimensions,
                 "generation_model": self._generation_model,
+                "profile_code": self._profile_code,
                 "query_context": query_context or {},
             }
         )
+
+    @staticmethod
+    def _effective_variables(
+        request: RagDraftGenerationRequest,
+        query_context: dict[str, str | None] | None,
+    ) -> dict[str, str]:
+        """Complete server-owned template variables without expanding the form."""
+
+        variables = {key: str(value) for key, value in request.variables.items()}
+        case_number = (query_context or {}).get("case_number")
+        if case_number and not variables.get("expediente"):
+            variables["expediente"] = case_number
+        date_value = variables.get("fecha", "")
+        year_match = re.search(r"\b(\d{4})\b", date_value)
+        if year_match and not variables.get("anio"):
+            variables["anio"] = year_match.group(1)
+        return variables
+
+    @staticmethod
+    def _replace_template_variables(
+        payload: PayloadT,
+        variables: dict[str, str],
+    ) -> PayloadT:
+        """Replace only known placeholders in the validated model response."""
+
+        if isinstance(payload, str):
+            return cast(
+                "PayloadT",
+                re.sub(
+                    r"\{\{\s*([A-Za-z0-9_]+)\s*\}\}",
+                    lambda match: (
+                        variables[match.group(1)]
+                        if variables.get(match.group(1), "").strip()
+                        else match.group(0)
+                    ),
+                    payload,
+                ),
+            )
+        if isinstance(payload, list):
+            return cast(
+                "PayloadT",
+                [
+                    RagGenerationService._replace_template_variables(item, variables)
+                    for item in payload
+                ],
+            )
+        if isinstance(payload, dict):
+            return cast(
+                "PayloadT",
+                {
+                    key: RagGenerationService._replace_template_variables(
+                        value, variables
+                    )
+                    for key, value in payload.items()
+                },
+            )
+        return payload
 
     async def _fail(
         self,
@@ -363,7 +440,7 @@ class RagGenerationService:
     def _build_query(
         self,
         request: RagDraftGenerationRequest,
-        query_context: dict[str, str] | None = None,
+        query_context: dict[str, str | None] | None = None,
     ) -> RagQuery:
         query_variables = {
             "case_file_id": str(request.case_file_id),
@@ -376,7 +453,11 @@ class RagGenerationService:
             document_subtype=(query_context or {}).get("document_subtype"),
             jurisdiction=(query_context or {}).get("jurisdiction"),
             language=request.retrieval.language,
-            organization=request.retrieval.organization,
+            organization=(
+                query_context["organization"]
+                if query_context is not None and "organization" in query_context
+                else request.retrieval.organization
+            ),
         )
 
     def _new_run(
@@ -397,11 +478,15 @@ class RagGenerationService:
             idempotency_key_hash=key_hash,
             prompt_version=self._prompt_builder.version,
             top_k=request.retrieval.top_k,
-            candidate_pool_size=min(3 * request.retrieval.top_k, 50),
+            candidate_pool_size=max(
+                request.retrieval.top_k,
+                min(self._candidate_pool_size, 50),
+            ),
             minimum_score=request.retrieval.minimum_score,
             request_id=request_id,
             embedding_model=self._embedding_model,
             embedding_dimensions=self._embedding_dimensions,
+            profile_code=self._profile_code,
             generation_model=self._generation_model,
         )
 
@@ -480,6 +565,8 @@ class RagGenerationService:
         *,
         started: float,
         cancel_event: CancellationEvent | None,
+        template_body: str | None = None,
+        target_document_type: str | None = None,
     ) -> tuple[RagGenerationRun, RagStructuredDraft, int]:
         """Construye el prompt y genera la salida estructurada con reparación."""
 
@@ -487,8 +574,10 @@ class RagGenerationService:
             query=query.text,
             context=retrieval.context.text,
             variables=request.variables,
-            document_type=query.filters.get("document_type", "documento"),
+            document_type=target_document_type
+            or query.filters.get("document_type", "documento"),
             document_subtype=query.filters.get("document_subtype", "expediente"),
+            template_body=template_body,
         )
         run = replace(run, prompt_hash=sha256_text(prompt.user_message))
         await self._audit.update(run)
@@ -503,18 +592,19 @@ class RagGenerationService:
         validation_error = "RAG_OUTPUT_INVALID"
         for attempt in range(self._schema_repair_attempts + 1):
             await self._check_cancelled(run, started, cancel_event)
+            output_shape: dict[str, object] | None = None
             try:
                 active_prompt = prompt
 
                 async def generate_call(
                     active_prompt: RagPrompt = active_prompt,
                 ) -> dict[str, Any]:
-                    raw = await self._provider.generate_structured(
-                        system_message=active_prompt.system_message,
-                        user_message=active_prompt.user_message,
-                        schema=rag_schema(),
-                        temperature=0.1,
-                        context=[
+                    generation_kwargs: dict[str, Any] = {
+                        "system_message": active_prompt.system_message,
+                        "user_message": active_prompt.user_message,
+                        "schema": rag_schema(),
+                        "temperature": 0.1,
+                        "context": [
                             {
                                 "citation_id": source.citation_id,
                                 "external_id": source.external_id,
@@ -525,8 +615,68 @@ class RagGenerationService:
                             }
                             for source in selected
                         ],
+                    }
+                    if getattr(self._provider, "supports_num_ctx", False):
+                        generation_kwargs["num_ctx"] = self._generation_context_length
+                    raw = await self._provider.generate_structured(
+                        **generation_kwargs,
                     )
-                    return dict(raw)
+                    normalized = dict(
+                        self._replace_template_variables(raw, request.variables)
+                    )
+                    if target_document_type == "nota_inicio":
+                        # The institutional note has no operative section. Keep
+                        # the model responsible for the prose, while enforcing
+                        # the server-owned structural fields. Some local models
+                        # repeat the two paragraphs in both legacy buckets; the
+                        # note editor has one body, so merge those buckets and
+                        # retain the first two unique paragraphs.
+                        merged_paragraphs: dict[str, dict[str, Any]] = {}
+                        for bucket in ("visto", "considerandos"):
+                            value = normalized.get(bucket, [])
+                            if not isinstance(value, list):
+                                continue
+                            for paragraph in value:
+                                if not isinstance(paragraph, dict):
+                                    continue
+                                text = str(paragraph.get("text", "")).strip()
+                                if not text:
+                                    continue
+                                key = " ".join(text.split())
+                                existing = merged_paragraphs.get(key)
+                                if existing is None:
+                                    merged_paragraphs[key] = {
+                                        "text": text,
+                                        "citation_ids": list(
+                                            paragraph.get("citation_ids", [])
+                                        ),
+                                    }
+                                else:
+                                    existing["citation_ids"] = list(
+                                        dict.fromkeys(
+                                            [
+                                                *existing["citation_ids"],
+                                                *paragraph.get("citation_ids", []),
+                                            ]
+                                        )
+                                    )
+                        normalized.update(
+                            {
+                                "title": "INFORME DE INICIO DE ACTUACIONES",
+                                "visto": list(merged_paragraphs.values())[:2],
+                                "considerandos": [],
+                                "articles": [],
+                                "dispositive_intro": "",
+                                "closing": "",
+                                "authority": "Dirección de Gestión Administrativa",
+                                "signature": "",
+                                "warnings": [
+                                    "BORRADOR NO VINCULANTE; REVISIÓN HUMANA "
+                                    "OBLIGATORIA."
+                                ],
+                            }
+                        )
+                    return normalized
 
                 if self._coordinator is None:
                     raw = await generate_call()
@@ -536,7 +686,22 @@ class RagGenerationService:
                         generate_call,
                         timeout=300,
                     )
+                output_shape = {
+                    "keys": sorted(raw),
+                    "list_lengths": {
+                        key: len(value)
+                        for key, value in raw.items()
+                        if isinstance(value, list)
+                    },
+                }
                 candidate = RagStructuredDraft.model_validate(raw)
+                if (
+                    target_document_type == "disposicion"
+                    and len(candidate.articles) != 6
+                ):
+                    raise ValueError("RAG_TEMPLATE_STRUCTURE_INVALID")
+                if target_document_type == "nota_inicio" and candidate.articles:
+                    raise ValueError("RAG_TEMPLATE_STRUCTURE_INVALID")
                 selected_by_citation = {
                     source.citation_id: source for source in selected
                 }
@@ -565,6 +730,19 @@ class RagGenerationService:
                 payload = candidate.model_dump(mode="json")
                 break
             except (StructuredGenerationError, ValueError, TypeError) as exc:
+                logger.warning(
+                    "Structured RAG output rejected error_type=%s provider_code=%s "
+                    "attempt=%s output_shape=%s validation_locations=%s",
+                    type(exc).__name__,
+                    getattr(exc, "code", None),
+                    attempt,
+                    output_shape,
+                    (
+                        [error.get("loc") for error in exc.errors()]
+                        if isinstance(exc, ValidationError)
+                        else None
+                    ),
+                )
                 validation_error = (
                     exc.code
                     if isinstance(exc, StructuredGenerationError)
@@ -580,12 +758,32 @@ class RagGenerationService:
                         started=started,
                     ) from exc
                 repair_count += 1
+                repair_hint = (
+                    "JSON/schema/citation validation failed; return only valid JSON."
+                )
+                if isinstance(exc, ValidationError):
+                    locations = {
+                        ".".join(str(part) for part in error.get("loc", ()))
+                        for error in exc.errors()
+                    }
+                    if any(location == "warnings" for location in locations):
+                        repair_hint = (
+                            "The warnings field must contain exactly one unique, "
+                            "non-empty warning that includes both "
+                            "'BORRADOR NO VINCULANTE' and "
+                            "'REVISIÓN HUMANA OBLIGATORIA'. Return only valid JSON."
+                        )
+                    else:
+                        repair_hint = (
+                            "Validation failed in fields: "
+                            + ", ".join(sorted(locations))
+                            + ". Return only valid JSON matching the schema."
+                        )
                 prompt = replace(
                     prompt,
                     user_message=(
                         prompt.user_message
-                        + "\n\nREPAIR_ERRORS=JSON/schema/citation validation failed; "
-                        "return only valid JSON."
+                        + f"\n\nREPAIR_ERRORS={repair_hint}"
                     ),
                 )
         if payload is None:
@@ -614,7 +812,7 @@ class RagGenerationService:
         document = LegalDocument.model_validate(
             {
                 **structured.model_dump(mode="json"),
-                "document_type": document_type,
+            "document_type": document_type,
             }
         )
         document_payload = document.model_dump(mode="json")
@@ -672,22 +870,29 @@ class RagGenerationService:
         *,
         idempotency_key: str,
         request_id: str,
-        query_context: dict[str, str] | None = None,
+        query_context: dict[str, str | None] | None = None,
         progress_callback: ProgressCallback | None = None,
         cancel_event: CancellationEvent | None = None,
+        template_body: str | None = None,
+        target_document_type: str | None = None,
     ) -> RagGenerationOutcome:
         """Máquina de estados: reserva → recuperación → generación → auditoría."""
 
         self._validate_request(idempotency_key, request_id)
         started = time.monotonic()
-        request_hash = self._request_hash(request, query_context)
+        effective_request = request.model_copy(
+            update={
+                "variables": self._effective_variables(request, query_context),
+            }
+        )
+        request_hash = self._request_hash(effective_request, query_context)
         key_hash = sha256_text(idempotency_key)
         cached = await self._audit.reserve(key_hash, request_hash)
         if cached is not None:
             return cached
-        query = self._build_query(request, query_context)
+        query = self._build_query(effective_request, query_context)
         run = self._new_run(
-            request,
+            effective_request,
             query,
             request_hash=request_hash,
             key_hash=key_hash,
@@ -715,30 +920,38 @@ class RagGenerationService:
             await self._notify(progress_callback, "retrieving", run)
 
             run, retrieval, selected = await self._retrieve_and_audit(
-                run, query, request, started=started, cancel_event=cancel_event
+                run,
+                query,
+                effective_request,
+                started=started,
+                cancel_event=cancel_event,
             )
             await self._notify(progress_callback, "generating", run)
             run, structured, repair_count = await self._generate_structured(
                 run,
                 query,
-                request,
+                effective_request,
                 retrieval,
                 selected,
                 started=started,
                 cancel_event=cancel_event,
+                template_body=template_body,
+                target_document_type=target_document_type,
             )
             await self._notify(progress_callback, "validating", run)
             await self._check_cancelled(run, started, cancel_event)
             return await self._persist_outcome(
                 run,
-                request,
+                effective_request,
                 request_id=request_id,
                 key_hash=key_hash,
                 retrieval=retrieval,
                 selected=selected,
                 structured=structured,
                 repair_count=repair_count,
-                document_type=(query_context or {}).get("document_type", "otros"),
+                document_type=target_document_type
+                or (query_context or {}).get("document_type")
+                or "otros",
                 started=started,
                 cancel_event=cancel_event,
             )

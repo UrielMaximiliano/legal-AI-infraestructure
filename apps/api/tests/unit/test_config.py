@@ -52,12 +52,19 @@ class TestOllamaConfig:
         with pytest.raises(ValidationError):
             OllamaConfig()
 
-        os.environ["OLLAMA_TIMEOUT_SECONDS"] = "31"
+        os.environ["OLLAMA_TIMEOUT_SECONDS"] = "301"
 
         with pytest.raises(ValidationError):
             OllamaConfig()
 
         os.environ["OLLAMA_TIMEOUT_SECONDS"] = "5"
+
+        config = OllamaConfig(
+            OLLAMA_BASE_URL="http://localhost:11434",
+            OLLAMA_API_TOKEN="test-token",
+            OLLAMA_TIMEOUT_SECONDS=120,
+        )
+        assert config.timeout_seconds == 120
 
     def test_embedding_names_are_preferred_with_legacy_compatibility(self) -> None:
         from legal_ai.config import OllamaConfig
@@ -130,3 +137,25 @@ class TestPostgreSQLConfig:
         url = config.database_url_sync
         assert url.startswith("postgresql://")
         assert "asyncpg" not in url
+
+
+class TestIMIDatabaseConfigs:
+    """Pruebas para los límites de persistencia de IMI LEG."""
+
+    def test_core_defaults_to_the_transactional_database(self) -> None:
+        from legal_ai.config import CorePostgreSQLConfig
+
+        config = CorePostgreSQLConfig()
+
+        assert config.db == "imi_leg_core"
+        assert config.host == "imi-core-postgres"
+        assert config.database_url.startswith("postgresql+asyncpg://")
+
+    def test_dispositions_rag_defaults_to_a_separate_vector_database(self) -> None:
+        from legal_ai.config import DispositionsRagPostgreSQLConfig
+
+        config = DispositionsRagPostgreSQLConfig()
+
+        assert config.db == "imi_disposiciones_rag"
+        assert config.host == "imi-disposiciones-rag-postgres"
+        assert config.database_url_sync.startswith("postgresql://")

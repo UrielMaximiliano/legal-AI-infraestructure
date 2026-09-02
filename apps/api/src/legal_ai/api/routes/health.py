@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Request, Response
+from sqlalchemy import text
 
+from legal_ai.adapters.database.dispositions_rag_unit_of_work import (
+    DispositionsRagUnitOfWork,
+)
 from legal_ai.adapters.database.engine import get_engine
 from legal_ai.adapters.database.health import PostgreSQLHealthAdapter
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
@@ -26,12 +30,16 @@ router = APIRouter(tags=["health"])
 
 
 def _get_health_service() -> HealthService:
-    db_adapter = PostgreSQLHealthAdapter(get_engine())
+    profile = settings.rag_profile
+    database = (
+        "imi_dispositions_rag" if profile.code == "imi_leg_06b" else "legacy"
+    )
+    db_adapter = PostgreSQLHealthAdapter(get_engine(database))
     client = create_ollama_client()
     ollama_adapter = OllamaHealthAdapter(
         client,
-        expected_model=settings.embedding.model,
-        expected_dimensions=settings.embedding.dimensions,
+        expected_model=profile.embedding_model,
+        expected_dimensions=profile.embedding_dimensions,
     )
     return HealthService(db_adapter, ollama_adapter)
 
@@ -52,10 +60,38 @@ async def _rag_generation_readiness() -> RagGenerationReadiness:
     corpus_error: str | None = None
     if available:
         try:
-            async with UnitOfWork() as uow:
-                eligible = await uow.corpus_documents.count_eligible_reviewed_documents(
-                    evaluation_split=settings.rag.required_evaluation_split
-                )
+            if settings.rag_profile.code == "imi_leg_06b":
+                async with DispositionsRagUnitOfWork() as uow:
+                    result = await uow.session.execute(
+                        text(
+                            """
+                            SELECT count(DISTINCT d.id)
+                            FROM rag.corpus_documents d
+                            JOIN rag.corpus_document_versions v
+                              ON v.document_id = d.id
+                            JOIN rag.corpus_chunks c
+                              ON c.document_version_id = v.id
+                            WHERE d.active AND v.is_active
+                              AND v.review_status_code = 'REVIEWED'
+                              AND c.state_code = 'ACTIVE'
+                              AND c.embedding IS NOT NULL
+                              AND EXISTS (
+                                SELECT 1 FROM rag.corpus_document_version_splits s
+                                WHERE s.document_version_id = v.id
+                                  AND s.split_code = :split
+                              )
+                            """
+                        ),
+                        {"split": settings.rag.required_evaluation_split},
+                    )
+                    eligible = int(result.scalar_one())
+            else:
+                async with UnitOfWork() as uow:
+                    eligible = (
+                        await uow.corpus_documents.count_eligible_reviewed_documents(
+                            evaluation_split=settings.rag.required_evaluation_split
+                        )
+                    )
         except Exception:
             logger.warning("RAG corpus readiness query failed", exc_info=True)
             corpus_error = "RAG_CORPUS_UNAVAILABLE"
@@ -66,13 +102,20 @@ async def _rag_generation_readiness() -> RagGenerationReadiness:
         error_code = None if eligible > 0 else "RAG_NO_REVIEWED_INDEX_90_DOCUMENTS"
     elif available:
         error_code = corpus_error
+    profile = settings.rag_profile
     return RagGenerationReadiness(
         status=status,
-        generation_model=settings.rag.generation_model,
-        embedding_model=settings.embedding.model,
-        dimensions=settings.embedding.dimensions,
+        generation_model=profile.generation_model,
+        embedding_model=profile.embedding_model,
+        dimensions=profile.embedding_dimensions,
         eligible_reviewed_documents=eligible,
         error_code=error_code,
+        profile_code=profile.code,
+        rag_database=profile.rag_database_name,
+        core_database=profile.core_database_name,
+        embedding_context_length=profile.embedding_context_length,
+        rag_context_length=profile.rag_context_length,
+        generation_context_length=profile.generation_context_length,
     )
 
 

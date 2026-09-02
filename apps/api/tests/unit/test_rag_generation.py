@@ -68,6 +68,75 @@ async def test_fake_generation_repairs_once_and_is_idempotent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_nota_inicio_enforces_non_operative_structure() -> None:
+    service = RagGenerationService(
+        retrieval=FakeRetrieval(),
+        provider=FakeStructuredGenerationProvider(),
+    )
+    request = RagDraftGenerationRequest(
+        template_id=uuid4(),
+        case_file_id=uuid4(),
+        variables={"expediente": "139-000124/2026", "concepto": "Becarios"},
+    )
+
+    outcome = await service.generate(
+        request,
+        idempotency_key="rag-nota-key-0001",
+        request_id="req-nota",
+        target_document_type="nota_inicio",
+    )
+
+    assert outcome.structured_draft is not None
+    assert outcome.structured_draft.title == "INFORME DE INICIO DE ACTUACIONES"
+    assert len(outcome.structured_draft.visto) == 2
+    assert outcome.structured_draft.considerandos == []
+    assert outcome.structured_draft.articles == []
+    assert outcome.structured_draft.dispositive_intro == ""
+    assert outcome.structured_draft.closing == ""
+    assert outcome.structured_draft.authority == "Dirección de Gestión Administrativa"
+
+
+def test_effective_variables_add_server_owned_case_number_and_year() -> None:
+    request = RagDraftGenerationRequest(
+        template_id=uuid4(),
+        case_file_id=uuid4(),
+        variables={"fecha": "2026-08-28", "beneficiario": "Ivan Rodriguez"},
+    )
+
+    variables = RagGenerationService._effective_variables(
+        request,
+        {"case_number": "139-000126/2026"},
+    )
+
+    assert variables["expediente"] == "139-000126/2026"
+    assert variables["anio"] == "2026"
+    assert variables["beneficiario"] == "Ivan Rodriguez"
+
+
+def test_replace_template_variables_only_replaces_known_values() -> None:
+    payload = {
+        "text": "Factura {{factura}} del expediente {{expediente}}",
+        "unknown": "{{cuit}}",
+        "items": [{"text": "Monto ${{monto_numerico}}"}],
+    }
+
+    result = RagGenerationService._replace_template_variables(
+        payload,
+        {
+            "factura": "0001-00000042",
+            "expediente": "139-000126/2026",
+            "monto_numerico": "150000",
+        },
+    )
+
+    assert result == {
+        "text": "Factura 0001-00000042 del expediente 139-000126/2026",
+        "unknown": "{{cuit}}",
+        "items": [{"text": "Monto $150000"}],
+    }
+
+
+@pytest.mark.asyncio
 async def test_in_memory_store_rejects_same_key_while_pending() -> None:
     from legal_ai.domain.rag import sha256_text
 

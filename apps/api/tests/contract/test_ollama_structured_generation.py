@@ -39,6 +39,7 @@ async def test_chat_contract_uses_json_schema_and_never_streams() -> None:
         await client.aclose()
     assert result == {"schema_version": 1}
     assert b'"stream":false' in bytes(captured["payload"])
+    assert b'"keep_alive":-1' in bytes(captured["payload"])
     assert b'"format":{"type":"object"}' in bytes(captured["payload"])
     assert captured["authorization"] == "Bearer secret-token"
 

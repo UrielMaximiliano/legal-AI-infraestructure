@@ -6,6 +6,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from legal_ai.embedding_contract import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+from legal_ai.rag_profile import RagRuntimeProfile, profile_for_runtime
 
 
 class AppConfig(BaseSettings):
@@ -35,6 +36,18 @@ class ServiceConfig(BaseSettings):
     service_token: str = Field(default="", alias="LEGAL_AI_SERVICE_TOKEN")
 
 
+class RuntimeConfig(BaseSettings):
+    """Selects the isolated runtime without changing legacy defaults."""
+
+    model_config = {"extra": "ignore"}
+
+    profile: str = Field(default="legacy", alias="LEGAL_AI_RUNTIME_PROFILE")
+
+    @property
+    def rag_profile(self) -> RagRuntimeProfile:
+        return profile_for_runtime(self.profile)
+
+
 class LoggingConfig(BaseSettings):
     """Configuración de logging."""
 
@@ -42,7 +55,12 @@ class LoggingConfig(BaseSettings):
 
 
 class PostgreSQLConfig(BaseSettings):
-    """Configuración de conexión a PostgreSQL."""
+    """Conexión de compatibilidad para la base legal-ai existente.
+
+    Esta base contiene el RAG histórico de decretos y no debe recibir datos de
+    IMI LEG. Las nuevas bases usan las configuraciones explícitas de core y
+    disposiciones que siguen.
+    """
 
     model_config = {"env_prefix": "POSTGRES_"}
 
@@ -63,6 +81,76 @@ class PostgreSQLConfig(BaseSettings):
     @property
     def database_url_sync(self) -> str:
         """Construye la URL de conexión síncrona para Alembic."""
+        return (
+            f"postgresql://{self.user}:{self.password}"
+            f"@{self.host}:{self.port}/{self.db}"
+        )
+
+
+class CorePostgreSQLConfig(BaseSettings):
+    """Conexión al PostgreSQL transaccional de IMI LEG.
+
+    La base contiene el dominio operativo y el schema ``auth`` administrado
+    por Better Auth. No contiene tablas de corpus ni columnas vectoriales.
+    """
+
+    model_config = {"extra": "ignore"}
+
+    host: str = Field(default="imi-core-postgres", alias="IMI_CORE_POSTGRES_HOST")
+    port: int = Field(default=5432, alias="IMI_CORE_POSTGRES_PORT")
+    db: str = Field(default="imi_leg_core", alias="IMI_CORE_POSTGRES_DB")
+    user: str = Field(default="imi_leg_core", alias="IMI_CORE_POSTGRES_USER")
+    password: str = Field(
+        default="change-me-core", alias="IMI_CORE_POSTGRES_PASSWORD"
+    )
+
+    @property
+    def database_url(self) -> str:
+        """Construye la URL asyncpg del core."""
+        return (
+            f"postgresql+asyncpg://{self.user}:{self.password}"
+            f"@{self.host}:{self.port}/{self.db}"
+        )
+
+    @property
+    def database_url_sync(self) -> str:
+        """Construye la URL síncrona del core para migraciones."""
+        return (
+            f"postgresql://{self.user}:{self.password}"
+            f"@{self.host}:{self.port}/{self.db}"
+        )
+
+
+class DispositionsRagPostgreSQLConfig(BaseSettings):
+    """Conexión al índice vectorial aislado de IMI LEG."""
+
+    model_config = {"extra": "ignore"}
+
+    host: str = Field(
+        default="imi-disposiciones-rag-postgres",
+        alias="IMI_DISPOSITIONS_RAG_POSTGRES_HOST",
+    )
+    port: int = Field(default=5432, alias="IMI_DISPOSITIONS_RAG_POSTGRES_PORT")
+    db: str = Field(
+        default="imi_disposiciones_rag", alias="IMI_DISPOSITIONS_RAG_POSTGRES_DB"
+    )
+    user: str = Field(
+        default="imi_dispositions_rag", alias="IMI_DISPOSITIONS_RAG_POSTGRES_USER"
+    )
+    password: str = Field(
+        default="change-me-dispositions",
+        alias="IMI_DISPOSITIONS_RAG_POSTGRES_PASSWORD",
+    )
+
+    @property
+    def database_url(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.user}:{self.password}"
+            f"@{self.host}:{self.port}/{self.db}"
+        )
+
+    @property
+    def database_url_sync(self) -> str:
         return (
             f"postgresql://{self.user}:{self.password}"
             f"@{self.host}:{self.port}/{self.db}"
@@ -91,7 +179,7 @@ class OllamaConfig(BaseSettings):
         ),
         serialization_alias="OLLAMA_EMBEDDING_TIMEOUT_SECONDS",
         gt=0,
-        le=30,
+        le=300,
     )
     endpoint: str = Field(
         default="/api/embed",
@@ -117,7 +205,12 @@ class OllamaConfig(BaseSettings):
 
 
 class EmbeddingConfig(BaseSettings):
-    """Contrato de embeddings de 005 (dimension nativa comprobada)."""
+    """Contrato de embeddings del proceso activo.
+
+    The legacy process accepts the existing 4B/2560 contract and IMI accepts
+    only the isolated 0.6B/1024 contract.  Runtime profile validation below
+    prevents a process from silently using the other profile.
+    """
 
     model_config = {"extra": "ignore"}
 
@@ -128,10 +221,12 @@ class EmbeddingConfig(BaseSettings):
 
     @model_validator(mode="after")
     def validate_contract(self) -> "EmbeddingConfig":
-        if self.model != EMBEDDING_MODEL:
-            raise ValueError("OLLAMA_EMBEDDING_MODEL no coincide con el contrato 005")
-        if self.dimensions != EMBEDDING_DIMENSIONS:
-            raise ValueError(f"EMBEDDING_DIMENSIONS debe ser {EMBEDDING_DIMENSIONS}")
+        contracts = {
+            (EMBEDDING_MODEL, EMBEDDING_DIMENSIONS),
+            ("qwen3-embedding:0.6b", 1024),
+        }
+        if (self.model, self.dimensions) not in contracts:
+            raise ValueError("OLLAMA_EMBEDDING_CONTRACT_INVALID")
         return self
 
 
@@ -156,7 +251,7 @@ class CorpusConfig(BaseSettings):
         ),
         serialization_alias="OLLAMA_EMBEDDING_TIMEOUT_SECONDS",
         gt=0,
-        le=30,
+        le=300,
     )
     max_input_bytes: int = Field(
         default=2 * 1024 * 1024,
@@ -245,6 +340,9 @@ class RagConfig(BaseSettings):
     )
     generation_max_retries: int = Field(
         default=1, alias="OLLAMA_GENERATION_MAX_RETRIES", ge=0, le=2
+    )
+    generation_context_length: int = Field(
+        default=16_384, alias="OLLAMA_GENERATION_NUM_CTX", gt=0, le=32_768
     )
     prompt_version: str = Field(
         default="rag-legal-document-v1", alias="RAG_PROMPT_VERSION"
@@ -361,8 +459,11 @@ class Settings:
         self.app = AppConfig()
         self.server = ServerConfig()
         self.service = ServiceConfig()
+        self.runtime = RuntimeConfig()
         self.logging = LoggingConfig()
         self.postgres = PostgreSQLConfig()
+        self.core_postgres = CorePostgreSQLConfig()
+        self.dispositions_rag_postgres = DispositionsRagPostgreSQLConfig()
         self.export = ExportConfig()
         self.embedding = EmbeddingConfig()
         self.corpus = CorpusConfig()
@@ -376,6 +477,29 @@ class Settings:
         if self._ollama is None:
             self._ollama = OllamaConfig()
         return self._ollama
+
+    @property
+    def rag_profile(self) -> RagRuntimeProfile:
+        """Return the effective, immutable profile for this process."""
+
+        profile = self.runtime.rag_profile
+        if self.runtime.profile.strip().lower() in {"imi_leg", "imi_leg_06b"}:
+            if (self.embedding.model, self.embedding.dimensions) != (
+                profile.embedding_model,
+                profile.embedding_dimensions,
+            ):
+                raise ValueError("IMI_EMBEDDING_CONTRACT_INVALID")
+            if self.rag.generation_context_length != profile.generation_context_length:
+                raise ValueError("IMI_GENERATION_CONTEXT_INVALID")
+            if self.rag.max_context_tokens_estimate != profile.rag_context_length:
+                raise ValueError("IMI_RAG_CONTEXT_INVALID")
+            if self.rag.top_k != profile.top_k:
+                raise ValueError("IMI_RAG_TOP_K_INVALID")
+            if self.rag.candidate_pool_size != profile.candidate_pool_size:
+                raise ValueError("IMI_RAG_CANDIDATE_POOL_INVALID")
+            if self.rag.minimum_score != profile.minimum_score:
+                raise ValueError("IMI_RAG_MINIMUM_SCORE_INVALID")
+        return profile
 
 
 settings = Settings()

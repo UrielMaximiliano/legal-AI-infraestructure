@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
+from legal_ai.adapters.database.imi_core import ImiCoreUnitOfWork
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
 from legal_ai.application.template_service import TemplateService
+from legal_ai.config import settings
 from legal_ai.schemas.errors import ErrorResponse
 from legal_ai.schemas.pagination import PaginatedResponse
 from legal_ai.schemas.template import (
@@ -17,6 +19,21 @@ from legal_ai.schemas.template import (
 )
 
 router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
+
+
+def _reject_legacy_write() -> None:
+    """Prevent IMI requests from silently writing to the legacy database."""
+    if settings.rag_profile.code == "imi_leg_06b":
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "IMI_CORE_WRITE_NOT_IMPLEMENTED",
+                "message": (
+                    "Las escrituras de plantillas de IMI requieren el repositorio "
+                    "imi_leg_core."
+                ),
+            },
+        )
 
 
 @router.post(
@@ -32,6 +49,7 @@ async def create_template(
     request: Request,
     body: CreateTemplateRequest,
 ) -> TemplateResponse:
+    _reject_legacy_write()
     async with UnitOfWork() as uow:
         service = TemplateService(uow)
         template = await service.create_template(
@@ -58,6 +76,22 @@ async def list_templates(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ) -> PaginatedResponse[TemplateResponse]:
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as uow:
+            if uow.core is None:
+                raise RuntimeError("IMI_CORE_UNAVAILABLE")
+            items, total = await uow.core.list_templates(
+                document_type=document_type,
+                search=search,
+                skip=skip,
+                limit=limit,
+            )
+        return PaginatedResponse(
+            page=skip // limit + 1,
+            page_size=limit,
+            total=total,
+            items=[TemplateResponse.model_validate(t) for t in items],
+        )
     async with UnitOfWork() as uow:
         service = TemplateService(uow)
         items, total = await service.list_templates(document_type, search, skip, limit)
@@ -81,6 +115,16 @@ async def get_template(
     request: Request,
     template_id: UUID,
 ) -> TemplateResponse:
+    if settings.rag_profile.code == "imi_leg_06b":
+        async with ImiCoreUnitOfWork() as uow:
+            if uow.core is None:
+                raise RuntimeError("IMI_CORE_UNAVAILABLE")
+            template = await uow.core.get_template(template_id)
+        if template is None:
+            from legal_ai.application.template_service import TemplateNotFoundError
+
+            raise TemplateNotFoundError(str(template_id))
+        return TemplateResponse.model_validate(template)
     async with UnitOfWork() as uow:
         service = TemplateService(uow)
         template = await service.get_template(str(template_id))
@@ -101,6 +145,7 @@ async def update_template(
     template_id: UUID,
     body: UpdateTemplateRequest,
 ) -> TemplateResponse:
+    _reject_legacy_write()
     async with UnitOfWork() as uow:
         service = TemplateService(uow)
         template = await service.update_template(
@@ -126,6 +171,7 @@ async def deactivate_template(
     request: Request,
     template_id: UUID,
 ) -> TemplateResponse:
+    _reject_legacy_write()
     async with UnitOfWork() as uow:
         service = TemplateService(uow)
         template = await service.deactivate_template(str(template_id))

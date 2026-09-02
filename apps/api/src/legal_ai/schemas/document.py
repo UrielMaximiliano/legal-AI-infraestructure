@@ -18,7 +18,9 @@ _HUMAN_REVIEW_WARNING = "BORRADOR NO VINCULANTE; REVISION HUMANA OBLIGATORIA."
 class DraftParagraph(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    text: StrictStr = Field(min_length=1, max_length=20_000)
+    # Empty text is valid while a manual draft is being composed. Approval
+    # performs the completeness check once the human has finished editing.
+    text: StrictStr = Field(min_length=0, max_length=20_000)
     citation_ids: list[str] = Field(default_factory=list)
 
     @field_validator("citation_ids")
@@ -35,7 +37,9 @@ class DraftArticle(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     number: StrictInt = Field(ge=1, le=999)
-    text: StrictStr = Field(min_length=1, max_length=20_000)
+    # Empty text is valid while a manual draft is being composed. Approval
+    # performs the completeness check once the human has finished editing.
+    text: StrictStr = Field(min_length=0, max_length=20_000)
     citation_ids: list[str] = Field(default_factory=list)
 
     @field_validator("citation_ids")
@@ -118,6 +122,14 @@ class LegalDocument(DraftDocument):
     def validate_for_approval(self) -> None:
         """Validate the minimum legal shape before a review can be approved."""
 
+        if self.document_type == "nota_inicio":
+            paragraphs = (*self.visto, *self.considerandos)
+            if not self.title.strip() or not paragraphs or any(
+                not item.text.strip() for item in paragraphs
+            ):
+                raise ValueError("STRUCTURED_DOCUMENT_INCOMPLETE")
+            return
+
         required = {
             "title": self.title,
             "dispositive_intro": self.dispositive_intro,
@@ -126,7 +138,9 @@ class LegalDocument(DraftDocument):
             "signature": self.signature,
         }
         missing = [name for name, value in required.items() if not value.strip()]
-        if missing or not self.articles:
+        if missing or not self.articles or any(
+            not article.text.strip() for article in self.articles
+        ):
             raise ValueError("STRUCTURED_DOCUMENT_INCOMPLETE")
 
 

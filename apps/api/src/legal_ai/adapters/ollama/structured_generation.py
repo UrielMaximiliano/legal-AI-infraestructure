@@ -17,6 +17,8 @@ from legal_ai.ports.structured_generation import StructuredGenerationError
 class OllamaStructuredGenerationProvider:
     """Private, bounded, non-streaming Ollama chat client."""
 
+    supports_num_ctx = True
+
     def __init__(
         self,
         *,
@@ -26,6 +28,7 @@ class OllamaStructuredGenerationProvider:
         endpoint: str = "/api/chat",
         timeout_seconds: float = 300.0,
         max_retries: int = 1,
+        generation_context_length: int = 16_384,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         if model != "qwen3.6:35b" or endpoint != "/api/chat":
@@ -60,6 +63,9 @@ class OllamaStructuredGenerationProvider:
         self.endpoint = endpoint
         self.timeout = timeout_seconds
         self.max_retries = max(0, min(max_retries, 2))
+        if generation_context_length <= 0 or generation_context_length > 32_768:
+            raise ValueError("OLLAMA_GENERATION_CONTEXT_INVALID")
+        self.generation_context_length = generation_context_length
         self._client = client
 
     def _headers(self) -> dict[str, str]:
@@ -186,6 +192,7 @@ class OllamaStructuredGenerationProvider:
         schema: Mapping[str, Any],
         temperature: float = 0.1,
         context: Sequence[Mapping[str, Any]] = (),
+        num_ctx: int | None = None,
     ) -> Mapping[str, Any]:
         if not system_message.strip() or not user_message.strip():
             raise ValueError("OLLAMA_GENERATION_INPUT_EMPTY")
@@ -196,8 +203,19 @@ class OllamaStructuredGenerationProvider:
                 {"role": "user", "content": user_message},
             ],
             "stream": False,
+            # Keep the 35B model resident between requests.  Its cold load is
+            # the dominant latency observed in production (~70s), while warm
+            # requests complete in a few seconds.
+            "keep_alive": -1,
+            # Structured generation must reserve the model output for the JSON
+            # document.  Qwen otherwise emits a long reasoning trace before
+            # the response and can exhaust the context before completing it.
+            "think": False,
             "format": self._schema_for_context(schema, context),
-            "options": {"temperature": temperature},
+            "options": {
+                "temperature": temperature,
+                "num_ctx": num_ctx or self.generation_context_length,
+            },
         }
         body = await self._request(payload)
         message = body.get("message")

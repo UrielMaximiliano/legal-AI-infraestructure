@@ -41,6 +41,79 @@ class ServiceTokenMiddleware(BaseHTTPMiddleware):
         )
 
 
+class ImiRuntimeBoundaryMiddleware(BaseHTTPMiddleware):
+    """Fail closed for routes that still belong to the legacy database."""
+
+    _LEGACY_PREFIXES = (
+        "/api/v1/drafts",
+        "/api/v1/generation-attempts",
+        "/api/v1/reviews",
+        "/api/v1/semantic-search",
+        "/api/v1/exports",
+    )
+
+    @staticmethod
+    def _is_imi_draft_read_path(path: str) -> bool:
+        """Allow the IMI Core-backed collection and detail reads."""
+        if path == "/api/v1/drafts":
+            return True
+        prefix = "/api/v1/drafts/"
+        if not path.startswith(prefix):
+            return False
+        parts = path.removeprefix(prefix).split("/")
+        return len(parts) == 1 or (len(parts) == 2 and parts[1] == "document")
+
+    @staticmethod
+    def _is_imi_draft_document_path(path: str) -> bool:
+        prefix = "/api/v1/drafts/"
+        if not path.startswith(prefix):
+            return False
+        parts = path.removeprefix(prefix).split("/")
+        return len(parts) == 2 and parts[1] == "document"
+
+    @staticmethod
+    def _is_imi_manual_draft_path(path: str) -> bool:
+        """Allow manual draft creation to write only to IMI Core."""
+        return path == "/api/v1/drafts"
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        if settings.rag_profile.code != "imi_leg_06b":
+            return await call_next(request)
+        path = request.url.path
+        imi_core_path = (
+            (request.method == "GET" and self._is_imi_draft_read_path(path))
+            or (
+                request.method == "PATCH"
+                and self._is_imi_draft_document_path(path)
+            )
+            or (
+                request.method == "POST"
+                and self._is_imi_manual_draft_path(path)
+            )
+        )
+        legacy_path = (
+            (path.startswith(self._LEGACY_PREFIXES) and not imi_core_path)
+            or (
+                path.startswith("/api/v1/case-files/")
+                and path.endswith(("/designation", "/generation-attempts"))
+            )
+        )
+        if legacy_path:
+            return JSONResponse(
+                status_code=501,
+                content={
+                    "error_code": "IMI_CORE_ROUTE_NOT_IMPLEMENTED",
+                    "message": (
+                        "La ruta solicitada todavía no está migrada a imi_leg_core."
+                    ),
+                    "request_id": getattr(request.state, "request_id", None),
+                },
+            )
+        return await call_next(request)
+
+
 class RagSecurityMiddleware(BaseHTTPMiddleware):
     """Enforce bounded JSON input without recording request contents or secrets."""
 

@@ -26,6 +26,7 @@ class StructuredGenerationProvider(Protocol):
         schema: Mapping[str, Any],
         temperature: float = 0.1,
         context: Sequence[Mapping[str, Any]] = (),
+        num_ctx: int | None = None,
     ) -> Mapping[str, Any]: ...
 
     async def health_check(self) -> Mapping[str, Any]: ...

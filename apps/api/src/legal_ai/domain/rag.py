@@ -36,6 +36,11 @@ _ALLOWED_ERRORS = frozenset(
     }
 )
 
+_EMBEDDING_CONTRACTS = {
+    "legacy": (EMBEDDING_MODEL, EMBEDDING_DIMENSIONS),
+    "imi_leg_06b": ("qwen3-embedding:0.6b", 1024),
+}
+
 
 class RagGenerationStatus(StrEnum):
     PENDING = "PENDING"
@@ -154,6 +159,7 @@ class RagGenerationRun:
     query_hash: str
     embedding_model: str = EMBEDDING_MODEL
     embedding_dimensions: int = EMBEDDING_DIMENSIONS
+    profile_code: str = "legacy"
     generation_model: str = "qwen3.6:35b"
     prompt_version: str = "rag-legal-document-v1"
     schema_version: int = 1
@@ -186,9 +192,12 @@ class RagGenerationRun:
         validate_hash(self.query_hash, "RAG_QUERY_HASH_INVALID")
         if self.idempotency_key_hash is not None:
             validate_hash(self.idempotency_key_hash, "RAG_IDEMPOTENCY_HASH_INVALID")
-        if self.embedding_model != EMBEDDING_MODEL:
+        expected = _EMBEDDING_CONTRACTS.get(self.profile_code)
+        if expected is None:
+            raise ValueError("RAG_PROFILE_INVALID")
+        if self.embedding_model != expected[0]:
             raise ValueError("RAG_EMBEDDING_MODEL_INVALID")
-        if self.embedding_dimensions != EMBEDDING_DIMENSIONS:
+        if self.embedding_dimensions != expected[1]:
             raise ValueError("RAG_EMBEDDING_DIMENSIONS_INVALID")
         if self.generation_model != "qwen3.6:35b":
             raise ValueError("RAG_GENERATION_MODEL_INVALID")
