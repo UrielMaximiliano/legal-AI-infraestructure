@@ -218,6 +218,30 @@ class ValidationDomainError(DomainError):
     status_code = 422
 
 
+class TemplateDefinitionInvalidError(DomainError):
+    code = "TEMPLATE_DEFINITION_INVALID"
+    status_code = 422
+    default_message = "La definición de la plantilla no es válida"
+
+
+class TemplateImportInvalidError(DomainError):
+    code = "TEMPLATE_IMPORT_INVALID"
+    status_code = 422
+    default_message = "El archivo de plantilla no es válido"
+
+
+class TemplateImportNotFoundError(DomainError):
+    code = "TEMPLATE_IMPORT_NOT_FOUND"
+    status_code = 404
+    default_message = "La importaciÃ³n solicitada no existe"
+
+
+class TemplateAnalysisNotFoundError(DomainError):
+    code = "TEMPLATE_ANALYSIS_NOT_FOUND"
+    status_code = 404
+    default_message = "El anÃ¡lisis solicitado no existe"
+
+
 class DraftNotFinalizedError(DomainError):
     code = "DRAFT_NOT_FINALIZED"
     status_code = 409

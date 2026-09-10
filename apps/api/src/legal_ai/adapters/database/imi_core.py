@@ -1,5 +1,8 @@
 """Transactional IMI LEG adapter backed by the isolated core database."""
 
+# SQL statements stay readable as adjacent literals; line length is not useful here.
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import json
@@ -10,6 +13,16 @@ from typing import Any, cast
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from legal_ai.application.template_management import (
+    body_to_blocks,
+    fields_from_markers,
+    validate_definition,
+)
+from legal_ai.application.template_service import (
+    TemplateConflictError,
+    TemplateInactiveError,
+    TemplateNotFoundError,
+)
 from legal_ai.domain.case_file import CaseFile
 from legal_ai.domain.draft import Draft
 from legal_ai.domain.employee import Employee
@@ -18,12 +31,14 @@ from legal_ai.domain.enums import (
     CaseType,
     DocumentType,
     DraftStatus,
-    TemplateDocumentType,
 )
 from legal_ai.domain.errors import (
     ConcurrentModification004Error,
     DomainError,
     DraftDocumentLockedError,
+    IdempotencyConflictError,
+    TemplateDefinitionInvalidError,
+    TemplateImportNotFoundError,
 )
 from legal_ai.domain.normalization import (
     normalize_cuil,
@@ -77,6 +92,41 @@ def _decode_variable_value(value: Any) -> str:
     return str(decoded)
 
 
+def _json_value(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return default
+    return value
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    dump = getattr(value, "model_dump", None)
+    return dict(dump(mode="json")) if callable(dump) else {}
+
+
+def _hash_payload(value: Any) -> str:
+    return _sha256_text(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    )
+
+
+_FIELD_DATA_TYPES = {
+    "text": "text",
+    "textarea": "text",
+    "date": "date",
+    "number": "decimal",
+    "currency": "decimal",
+    "boolean": "boolean",
+    "select": "text",
+}
+
+
 class ImiCoreRepository:
     """Explicit repository for core tables; it never imports legacy ORM models."""
 
@@ -84,41 +134,96 @@ class ImiCoreRepository:
         self._session = session
 
     async def get_template(self, template_id: uuid.UUID) -> Template | None:
+        """Return the editable version when one exists, otherwise published."""
+        return await self._get_template(template_id, include_draft=True)
+
+    async def get_published_template(self, template_id: uuid.UUID) -> Template | None:
+        """Return the immutable version used by document generation."""
+        return await self._get_template(template_id, include_draft=False)
+
+    async def get_template_at_version(
+        self, template_id: uuid.UUID, version_id: uuid.UUID
+    ) -> Template | None:
+        """Return one exact version without resolving the latest draft."""
+        return await self._get_template(
+            template_id, include_draft=False, version_id=version_id
+        )
+
+    async def _get_template(
+        self,
+        template_id: uuid.UUID,
+        *,
+        include_draft: bool,
+        version_id: uuid.UUID | None = None,
+    ) -> Template | None:
+        draft_order = (
+            "CASE WHEN cfg.status = 'DRAFT' THEN 0 "
+            "WHEN cfg.status = 'PUBLISHED' THEN 1 ELSE 2 END, v.version DESC"
+        )
+        published_order = (
+            "CASE WHEN COALESCE(cfg.status, 'PUBLISHED') = 'PUBLISHED' THEN 0 "
+            "ELSE 1 END, v.version DESC"
+        )
+        order_by = draft_order if include_draft else published_order
+        version_filter = "AND v0.id = :version_id" if version_id is not None else ""
+        query_params: dict[str, Any] = {"template_id": template_id}
+        if version_id is not None:
+            query_params["version_id"] = version_id
         result = await self._session.execute(
             text(
-                """
+                f"""
                 SELECT
                   t.id, t.name, t.active, t.created_at,
-                  t.organization_id, t.jurisdiction, t.language_code,
-                  dt.code AS document_type,
+                  dt.code AS document_type, v.id AS template_version_id,
                   v.version, v.body_template, v.description,
                   org.name AS organization_name,
-                  COALESCE(
-                    array_agg(tv.variable_key ORDER BY tv.display_order)
-                    FILTER (WHERE tv.variable_key IS NOT NULL AND tv.required),
-                    ARRAY[]::varchar[]
-                  ) AS variables
+                  COALESCE(cfg.status, 'PUBLISHED') AS status,
+                  COALESCE(cfg.revision, 1) AS revision,
+                  COALESCE(cfg.fields_json, '[]'::jsonb) AS fields_json,
+                  COALESCE(cfg.rules_json, '[]'::jsonb) AS rules_json,
+                  COALESCE(cfg.blocks_json, '[]'::jsonb) AS blocks_json,
+                  cfg.instructions,
+                  cfg.organ_emisor,
+                  cfg.normativa,
+                  COALESCE(cfg.extraction_warnings, '[]'::jsonb) AS extraction_warnings,
+                  COALESCE(cfg.updated_at, v.created_at) AS version_updated_at
                 FROM imi.document_templates AS t
                 JOIN imi.document_types AS dt ON dt.id = t.document_type_id
                 JOIN imi.organizations AS org ON org.id = t.organization_id
-                JOIN imi.document_template_versions AS v
-                  ON v.template_id = t.id
-                 AND v.version = (
-                   SELECT max(v2.version)
-                   FROM imi.document_template_versions AS v2
-                   WHERE v2.template_id = t.id
-                 )
-                LEFT JOIN imi.template_variables AS tv
-                  ON tv.template_version_id = v.id
+                JOIN LATERAL (
+                  SELECT v0.*
+                  FROM imi.document_template_versions AS v0
+                  LEFT JOIN imi.template_version_configs AS cfg0
+                    ON cfg0.template_version_id = v0.id
+                  WHERE v0.template_id = t.id
+                    {version_filter}
+                  ORDER BY {order_by.replace("cfg.", "cfg0.").replace("v.", "v0.")}
+                  LIMIT 1
+                ) AS v ON TRUE
+                LEFT JOIN imi.template_version_configs AS cfg
+                  ON cfg.template_version_id = v.id
                 WHERE t.id = :template_id
-                GROUP BY t.id, dt.code, v.version, v.body_template,
-                         v.description, org.name
                 """
             ),
-            {"template_id": template_id},
+            query_params,
         )
         row = result.mappings().first()
-        return self._template_from_row(row) if row else None
+        if row is None:
+            return None
+        values = dict(row)
+        variable_rows = await self._session.execute(
+            text(
+                """
+                SELECT variable_key
+                FROM imi.template_variables
+                WHERE template_version_id = :template_version_id
+                ORDER BY display_order
+                """
+            ),
+            {"template_version_id": row["template_version_id"]},
+        )
+        values["variables"] = [str(variable_row[0]) for variable_row in variable_rows]
+        return self._template_from_row(values)
 
     async def list_templates(
         self,
@@ -126,15 +231,31 @@ class ImiCoreRepository:
         search: str | None,
         skip: int,
         limit: int,
+        status: str | None = None,
     ) -> tuple[list[Template], int]:
-        clauses = ["t.active", "org.code = 'IMI'"]
+        normalized_status = status.upper() if status else None
+        clauses = ["org.code = 'IMI'"]
         params: dict[str, Any] = {"skip": skip, "limit": limit}
+        if normalized_status != "INACTIVE":
+            clauses.append("t.active")
+        else:
+            clauses.append("NOT t.active")
         if document_type:
             clauses.append("lower(dt.code) = lower(:document_type)")
             params["document_type"] = document_type
         if search:
             clauses.append("t.name ILIKE :search")
             params["search"] = f"%{search}%"
+        if normalized_status and normalized_status != "INACTIVE":
+            clauses.append(
+                "COALESCE((SELECT cfg.status FROM imi.document_template_versions AS sv "
+                "LEFT JOIN imi.template_version_configs AS cfg "
+                "ON cfg.template_version_id = sv.id WHERE sv.template_id = t.id "
+                "ORDER BY CASE WHEN cfg.status = 'DRAFT' THEN 0 "
+                "WHEN cfg.status = 'PUBLISHED' THEN 1 ELSE 2 END, sv.version DESC "
+                "LIMIT 1), 'PUBLISHED') = :template_status"
+            )
+            params["template_status"] = normalized_status
         where = " AND ".join(clauses)
         count = await self._session.execute(
             text(
@@ -165,10 +286,957 @@ class ImiCoreRepository:
         )
         items: list[Template] = []
         for row in rows:
-            template = await self.get_template(row[0])
+            template = await (
+                self.get_published_template(row[0])
+                if normalized_status == "PUBLISHED"
+                else self.get_template(row[0])
+            )
             if template is not None:
                 items.append(template)
         return items, total
+
+    async def _idempotency_get(
+        self, operation: str, key: str | None, request_hash: str
+    ) -> dict[str, Any] | None:
+        if not key:
+            return None
+        result = await self._session.execute(
+            text(
+                "SELECT request_hash, response_json FROM imi.template_idempotency "
+                "WHERE operation = :operation AND idempotency_key = :key FOR UPDATE"
+            ),
+            {"operation": operation, "key": key},
+        )
+        row = result.mappings().first()
+        if row is None:
+            return None
+        if row["request_hash"] != request_hash:
+            raise IdempotencyConflictError()
+        response = _json_value(row["response_json"], {})
+        return response if isinstance(response, dict) else {}
+
+    async def _idempotency_put(
+        self,
+        operation: str,
+        key: str | None,
+        request_hash: str,
+        response: dict[str, Any],
+    ) -> None:
+        if not key:
+            return
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_idempotency "
+                "(operation, idempotency_key, request_hash, response_json) "
+                "VALUES (:operation, :key, :request_hash, CAST(:response AS jsonb))"
+            ),
+            {
+                "operation": operation,
+                "key": key,
+                "request_hash": request_hash,
+                "response": json.dumps(response, ensure_ascii=False),
+            },
+        )
+
+    async def _document_type_id(self, document_type: str) -> tuple[uuid.UUID, str]:
+        result = await self._session.execute(
+            text(
+                "SELECT id, code FROM imi.document_types "
+                "WHERE lower(code) = lower(:code) AND active"
+            ),
+            {"code": document_type.strip()},
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise TemplateDefinitionInvalidError(
+                "El tipo documental no existe en el catálogo de IMI.",
+                details={"field": "document_type", "value": document_type},
+            )
+        return row["id"], str(row["code"])
+
+    async def _organization(self) -> tuple[uuid.UUID, str]:
+        result = await self._session.execute(
+            text("SELECT id, name FROM imi.organizations WHERE code = 'IMI' AND active")
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise ImiConfigurationError(details={"organization": "IMI"})
+        return row["id"], str(row["name"])
+
+    @staticmethod
+    def _prepared_definition(
+        *,
+        name: str,
+        body: str,
+        fields: list[Any] | None,
+        rules: list[Any] | None,
+        blocks: list[Any] | None,
+    ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        body_value = body.strip()
+        field_values = [_as_dict(item) for item in (fields or [])]
+        if not field_values:
+            field_values = fields_from_markers(body_value)
+        rule_values = [_as_dict(item) for item in (rules or [])]
+        block_values = [_as_dict(item) for item in (blocks or [])]
+        if not block_values:
+            block_values = body_to_blocks(body_value)
+        errors = validate_definition(
+            name=name,
+            body=body_value,
+            fields=field_values,
+            rules=rule_values,
+            blocks=block_values,
+        )
+        if errors:
+            raise TemplateDefinitionInvalidError(details={"errors": errors})
+        return body_value, field_values, rule_values, block_values
+
+    async def _replace_variables(
+        self, template_version_id: uuid.UUID, fields: list[dict[str, Any]]
+    ) -> None:
+        await self._session.execute(
+            text(
+                "DELETE FROM imi.template_variables "
+                "WHERE template_version_id = :template_version_id"
+            ),
+            {"template_version_id": template_version_id},
+        )
+        for index, field in enumerate(fields, start=1):
+            field_type = str(field.get("type") or "text")
+            await self._session.execute(
+                text(
+                    "INSERT INTO imi.template_variables "
+                    "(template_version_id, variable_key, label, data_type, required, display_order) "
+                    "VALUES (:version_id, :key, :label, :data_type, :required, :display_order)"
+                ),
+                {
+                    "version_id": template_version_id,
+                    "key": str(field["key"]),
+                    "label": str(field.get("label") or field["key"]),
+                    "data_type": _FIELD_DATA_TYPES.get(field_type, "text"),
+                    "required": bool(field.get("required", False)),
+                    "display_order": index,
+                },
+            )
+
+    async def _version_payload(self, row: Any) -> dict[str, Any]:
+        fields = _json_value(row.get("fields_json"), [])
+        rules = _json_value(row.get("rules_json"), [])
+        blocks = _json_value(row.get("blocks_json"), [])
+        warnings = _json_value(row.get("extraction_warnings"), [])
+        if not isinstance(fields, list):
+            fields = []
+        if not isinstance(rules, list):
+            rules = []
+        if not isinstance(blocks, list):
+            blocks = []
+        if not isinstance(warnings, list):
+            warnings = []
+        if not fields:
+            variable_result = await self._session.execute(
+                text(
+                    "SELECT variable_key, label, data_type, required, display_order "
+                    "FROM imi.template_variables WHERE template_version_id = :version_id "
+                    "ORDER BY display_order"
+                ),
+                {"version_id": row["id"]},
+            )
+            type_map = {
+                "integer": "number",
+                "decimal": "currency",
+                "date": "date",
+                "boolean": "boolean",
+            }
+            fields = [
+                {
+                    "key": str(item["variable_key"]),
+                    "label": str(item["label"]),
+                    "type": type_map.get(str(item["data_type"]), "text"),
+                    "required": bool(item["required"]),
+                    "order": int(item["display_order"]) - 1,
+                }
+                for item in variable_result.mappings()
+            ]
+        if not blocks:
+            blocks = body_to_blocks(str(row["body_template"]))
+        return {
+            "id": row["id"],
+            "template_version_id": row["id"],
+            "version": int(row["version"]),
+            "status": str(row.get("status") or "PUBLISHED"),
+            "revision": int(row.get("revision") or 1),
+            "body_template": str(row["body_template"]),
+            "fields": fields,
+            "rules": rules,
+            "instructions": row.get("instructions"),
+            "blocks": blocks,
+            "extraction_warnings": [str(item) for item in warnings],
+            "created_at": row["created_at"],
+            "updated_at": row.get("updated_at") or row["created_at"],
+        }
+
+    async def get_template_version(
+        self, template_id: uuid.UUID, version_id: uuid.UUID
+    ) -> dict[str, Any] | None:
+        result = await self._session.execute(
+            text(
+                "SELECT v.id, v.version, v.body_template, v.created_at, "
+                "COALESCE(cfg.status, 'PUBLISHED') AS status, "
+                "COALESCE(cfg.revision, 1) AS revision, cfg.fields_json, cfg.rules_json, "
+                "cfg.blocks_json, cfg.instructions, cfg.extraction_warnings, "
+                "COALESCE(cfg.updated_at, v.created_at) AS updated_at "
+                "FROM imi.document_template_versions AS v "
+                "JOIN imi.document_templates AS t ON t.id = v.template_id "
+                "LEFT JOIN imi.template_version_configs AS cfg "
+                "ON cfg.template_version_id = v.id "
+                "WHERE t.id = :template_id AND v.id = :version_id"
+            ),
+            {"template_id": template_id, "version_id": version_id},
+        )
+        row = result.mappings().first()
+        return await self._version_payload(row) if row else None
+
+    async def list_template_versions(
+        self, template_id: uuid.UUID
+    ) -> tuple[list[dict[str, Any]], int]:
+        result = await self._session.execute(
+            text(
+                "SELECT v.id, v.version, v.body_template, v.created_at, "
+                "COALESCE(cfg.status, 'PUBLISHED') AS status, "
+                "COALESCE(cfg.revision, 1) AS revision, cfg.fields_json, cfg.rules_json, "
+                "cfg.blocks_json, cfg.instructions, cfg.extraction_warnings, "
+                "COALESCE(cfg.updated_at, v.created_at) AS updated_at "
+                "FROM imi.document_template_versions AS v "
+                "JOIN imi.document_templates AS t ON t.id = v.template_id "
+                "LEFT JOIN imi.template_version_configs AS cfg "
+                "ON cfg.template_version_id = v.id "
+                "WHERE t.id = :template_id ORDER BY v.version DESC"
+            ),
+            {"template_id": template_id},
+        )
+        rows = result.mappings().all()
+        return [await self._version_payload(row) for row in rows], len(rows)
+
+    async def create_template(
+        self,
+        *,
+        name: str,
+        document_type: str,
+        body: str,
+        fields: list[Any] | None,
+        rules: list[Any] | None,
+        blocks: list[Any] | None,
+        instructions: str | None,
+        organ_emisor: str | None,
+        normativa: str | None,
+        description: str | None,
+        actor: str,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[Template, bool]:
+        existing = await self._idempotency_get(
+            "template-create", idempotency_key, request_hash
+        )
+        if existing:
+            template = await self.get_template(uuid.UUID(str(existing["template_id"])))
+            if template is None:
+                raise ImiConfigurationError(
+                    details={"template_id": existing["template_id"]}
+                )
+            return template, False
+        body_value, field_values, rule_values, block_values = self._prepared_definition(
+            name=name, body=body, fields=fields, rules=rules, blocks=blocks
+        )
+        document_type_id, _ = await self._document_type_id(document_type)
+        organization_id, _ = await self._organization()
+        template_id = uuid.uuid4()
+        version_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.document_templates "
+                "(id, code, name, document_type_id, organization_id, active) "
+                "VALUES (:id, :code, :name, :document_type_id, :organization_id, true)"
+            ),
+            {
+                "id": template_id,
+                "code": f"IMI_TEMPLATE_{template_id.hex}",
+                "name": name.strip(),
+                "document_type_id": document_type_id,
+                "organization_id": organization_id,
+            },
+        )
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.document_template_versions "
+                "(id, template_id, version, issuing_organization_id, description, body_template) "
+                "VALUES (:id, :template_id, 1, :organization_id, :description, :body)"
+            ),
+            {
+                "id": version_id,
+                "template_id": template_id,
+                "organization_id": organization_id,
+                "description": description,
+                "body": body_value,
+            },
+        )
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_version_configs "
+                "(template_version_id, status, revision, fields_json, rules_json, blocks_json, "
+                "instructions, organ_emisor, normativa, extraction_warnings, created_at, updated_at) "
+                "VALUES (:version_id, 'DRAFT', 1, CAST(:fields AS jsonb), CAST(:rules AS jsonb), "
+                "CAST(:blocks AS jsonb), :instructions, :organ_emisor, :normativa, '[]'::jsonb, :now, :now)"
+            ),
+            {
+                "version_id": version_id,
+                "fields": json.dumps(field_values, ensure_ascii=False),
+                "rules": json.dumps(rule_values, ensure_ascii=False),
+                "blocks": json.dumps(block_values, ensure_ascii=False),
+                "instructions": instructions,
+                "organ_emisor": organ_emisor,
+                "normativa": normativa,
+                "now": now,
+            },
+        )
+        await self._replace_variables(version_id, field_values)
+        template = await self.get_template(template_id)
+        if template is None:
+            raise ImiConfigurationError(details={"template_id": str(template_id)})
+        await self._idempotency_put(
+            "template-create",
+            idempotency_key,
+            request_hash,
+            {"template_id": str(template_id)},
+        )
+        return template, True
+
+    async def create_template_version(
+        self,
+        *,
+        template_id: uuid.UUID,
+        body: str,
+        fields: list[Any] | None,
+        rules: list[Any] | None,
+        blocks: list[Any] | None,
+        instructions: str | None,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = await self._idempotency_get(
+            "template-version-create", idempotency_key, request_hash
+        )
+        if existing:
+            version = await self.get_template_version(
+                template_id, uuid.UUID(str(existing["template_version_id"]))
+            )
+            if version is None:
+                raise TemplateNotFoundError(str(template_id))
+            return version, False
+        template = await self.get_template(template_id)
+        if template is None:
+            raise TemplateNotFoundError(str(template_id))
+        if not template.is_active:
+            raise TemplateInactiveError(str(template_id))
+        body_value, field_values, rule_values, block_values = self._prepared_definition(
+            name=template.name, body=body, fields=fields, rules=rules, blocks=blocks
+        )
+        version_result = await self._session.execute(
+            text(
+                "SELECT COALESCE(max(version), 0) + 1 FROM imi.document_template_versions "
+                "WHERE template_id = :template_id"
+            ),
+            {"template_id": template_id},
+        )
+        next_version = int(version_result.scalar_one())
+        version_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        organization_id, _ = await self._organization()
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.document_template_versions "
+                "(id, template_id, version, issuing_organization_id, description, body_template) "
+                "VALUES (:id, :template_id, :version, :organization_id, :description, :body)"
+            ),
+            {
+                "id": version_id,
+                "template_id": template_id,
+                "version": next_version,
+                "organization_id": organization_id,
+                "description": template.description,
+                "body": body_value,
+            },
+        )
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_version_configs "
+                "(template_version_id, status, revision, fields_json, rules_json, blocks_json, instructions, "
+                "organ_emisor, normativa, extraction_warnings, created_at, updated_at) "
+                "VALUES (:version_id, 'DRAFT', 1, CAST(:fields AS jsonb), CAST(:rules AS jsonb), "
+                "CAST(:blocks AS jsonb), :instructions, :organ_emisor, :normativa, '[]'::jsonb, :now, :now)"
+            ),
+            {
+                "version_id": version_id,
+                "fields": json.dumps(field_values, ensure_ascii=False),
+                "rules": json.dumps(rule_values, ensure_ascii=False),
+                "blocks": json.dumps(block_values, ensure_ascii=False),
+                "instructions": instructions,
+                "organ_emisor": template.organ_emisor,
+                "normativa": template.normativa,
+                "now": now,
+            },
+        )
+        await self._replace_variables(version_id, field_values)
+        payload = await self.get_template_version(template_id, version_id)
+        if payload is None:
+            raise ImiConfigurationError(
+                details={"template_version_id": str(version_id)}
+            )
+        await self._idempotency_put(
+            "template-version-create",
+            idempotency_key,
+            request_hash,
+            {"template_id": str(template_id), "template_version_id": str(version_id)},
+        )
+        return payload, True
+
+    async def update_template_version(
+        self,
+        *,
+        template_id: uuid.UUID,
+        version_id: uuid.UUID,
+        payload: dict[str, Any],
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = await self._idempotency_get(
+            "template-version-update", idempotency_key, request_hash
+        )
+        if existing:
+            version = await self.get_template_version(
+                template_id, uuid.UUID(str(existing["template_version_id"]))
+            )
+            if version is None:
+                raise TemplateNotFoundError(str(template_id))
+            return version, False
+        result = await self._session.execute(
+            text(
+                "SELECT t.name, t.active, v.body_template, v.description, "
+                "COALESCE(cfg.status, 'PUBLISHED') AS status, COALESCE(cfg.revision, 1) AS revision, "
+                "cfg.fields_json, cfg.rules_json, cfg.blocks_json, cfg.instructions, cfg.organ_emisor, cfg.normativa "
+                "FROM imi.document_template_versions AS v "
+                "JOIN imi.document_templates AS t ON t.id = v.template_id "
+                "LEFT JOIN imi.template_version_configs AS cfg ON cfg.template_version_id = v.id "
+                "WHERE t.id = :template_id AND v.id = :version_id FOR UPDATE OF v, t"
+            ),
+            {"template_id": template_id, "version_id": version_id},
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise TemplateNotFoundError(str(template_id))
+        if not row["active"]:
+            raise TemplateInactiveError(str(template_id))
+        if str(row["status"]) != "DRAFT":
+            raise TemplateConflictError(str(template_id))
+        if payload.get("revision") is not None and int(payload["revision"]) != int(
+            row["revision"]
+        ):
+            raise TemplateConflictError(str(template_id))
+        body_value = str(payload.get("body_template") or row["body_template"])
+        fields_value = payload.get("fields")
+        if fields_value is None:
+            fields_value = _json_value(row["fields_json"], [])
+        rules_value = payload.get("rules")
+        if rules_value is None:
+            rules_value = _json_value(row["rules_json"], [])
+        blocks_value = payload.get("blocks")
+        if blocks_value is None:
+            blocks_value = _json_value(row["blocks_json"], [])
+        body_value, field_values, rule_values, block_values = self._prepared_definition(
+            name=str(row["name"]),
+            body=body_value,
+            fields=fields_value,
+            rules=rules_value,
+            blocks=blocks_value,
+        )
+        next_revision = int(row["revision"]) + 1
+        now = datetime.now(UTC)
+        await self._session.execute(
+            text(
+                "UPDATE imi.document_template_versions SET body_template = :body "
+                "WHERE id = :version_id"
+            ),
+            {"body": body_value, "version_id": version_id},
+        )
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_version_configs "
+                "(template_version_id, status, revision, fields_json, rules_json, blocks_json, instructions, "
+                "organ_emisor, normativa, extraction_warnings, created_at, updated_at) "
+                "VALUES (:version_id, 'DRAFT', :revision, CAST(:fields AS jsonb), CAST(:rules AS jsonb), "
+                "CAST(:blocks AS jsonb), :instructions, :organ_emisor, :normativa, '[]'::jsonb, :now, :now) "
+                "ON CONFLICT (template_version_id) DO UPDATE SET status = 'DRAFT', revision = EXCLUDED.revision, "
+                "fields_json = EXCLUDED.fields_json, rules_json = EXCLUDED.rules_json, blocks_json = EXCLUDED.blocks_json, "
+                "instructions = EXCLUDED.instructions, organ_emisor = EXCLUDED.organ_emisor, normativa = EXCLUDED.normativa, "
+                "updated_at = EXCLUDED.updated_at"
+            ),
+            {
+                "version_id": version_id,
+                "revision": next_revision,
+                "fields": json.dumps(field_values, ensure_ascii=False),
+                "rules": json.dumps(rule_values, ensure_ascii=False),
+                "blocks": json.dumps(block_values, ensure_ascii=False),
+                "instructions": payload.get("instructions", row["instructions"]),
+                "organ_emisor": payload.get("organ_emisor", row["organ_emisor"]),
+                "normativa": payload.get("normativa", row["normativa"]),
+                "now": now,
+            },
+        )
+        await self._replace_variables(version_id, field_values)
+        version = await self.get_template_version(template_id, version_id)
+        if version is None:
+            raise ImiConfigurationError(
+                details={"template_version_id": str(version_id)}
+            )
+        await self._idempotency_put(
+            "template-version-update",
+            idempotency_key,
+            request_hash,
+            {"template_id": str(template_id), "template_version_id": str(version_id)},
+        )
+        return version, True
+
+    async def publish_template_version(
+        self,
+        *,
+        template_id: uuid.UUID,
+        version_id: uuid.UUID,
+        revision: int | None,
+        confirm_warnings: bool,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = await self._idempotency_get(
+            "template-publish", idempotency_key, request_hash
+        )
+        if existing:
+            version = await self.get_template_version(
+                template_id, uuid.UUID(str(existing["template_version_id"]))
+            )
+            if version is None:
+                raise TemplateNotFoundError(str(template_id))
+            return version, False
+        result = await self._session.execute(
+            text(
+                "SELECT t.name, t.active, v.body_template, cfg.* "
+                "FROM imi.document_template_versions AS v "
+                "JOIN imi.document_templates AS t ON t.id = v.template_id "
+                "LEFT JOIN imi.template_version_configs AS cfg ON cfg.template_version_id = v.id "
+                "WHERE t.id = :template_id AND v.id = :version_id FOR UPDATE OF v, t"
+            ),
+            {"template_id": template_id, "version_id": version_id},
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise TemplateNotFoundError(str(template_id))
+        if not row["active"]:
+            raise TemplateInactiveError(str(template_id))
+        current_status = str(row.get("status") or "PUBLISHED")
+        if current_status == "PUBLISHED":
+            return await self.get_template_version(template_id, version_id) or {}, False
+        if current_status != "DRAFT":
+            raise TemplateConflictError(str(template_id))
+        current_revision = int(row.get("revision") or 1)
+        if revision is not None and revision != current_revision:
+            raise TemplateConflictError(str(template_id))
+        fields = _json_value(row.get("fields_json"), [])
+        rules = _json_value(row.get("rules_json"), [])
+        blocks = _json_value(row.get("blocks_json"), [])
+        warnings = _json_value(row.get("extraction_warnings"), [])
+        body_value, field_values, rule_values, block_values = self._prepared_definition(
+            name=str(row["name"]),
+            body=str(row["body_template"]),
+            fields=fields,
+            rules=rules,
+            blocks=blocks,
+        )
+        if warnings and not confirm_warnings:
+            raise TemplateDefinitionInvalidError(
+                "La publicación requiere confirmar las advertencias de extracción.",
+                details={"warnings": warnings},
+            )
+        del body_value, field_values, rule_values, block_values
+        await self._session.execute(
+            text(
+                "UPDATE imi.template_version_configs cfg_old SET status = 'ARCHIVED', updated_at = now() "
+                "WHERE cfg_old.template_version_id IN (SELECT id FROM imi.document_template_versions "
+                "WHERE template_id = :template_id) AND cfg_old.status = 'PUBLISHED'"
+            ),
+            {"template_id": template_id},
+        )
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_version_configs (template_version_id, status, revision, fields_json, rules_json, blocks_json, instructions, organ_emisor, normativa, extraction_warnings, created_at, updated_at, published_at) "
+                "VALUES (:version_id, 'PUBLISHED', :revision, CAST(:fields AS jsonb), CAST(:rules AS jsonb), CAST(:blocks AS jsonb), :instructions, :organ_emisor, :normativa, CAST(:warnings AS jsonb), :now, :now, :now) "
+                "ON CONFLICT (template_version_id) DO UPDATE SET status = 'PUBLISHED', revision = EXCLUDED.revision, updated_at = EXCLUDED.updated_at, published_at = EXCLUDED.published_at"
+            ),
+            {
+                "version_id": version_id,
+                "revision": current_revision,
+                "fields": json.dumps(fields or [], ensure_ascii=False),
+                "rules": json.dumps(rules or [], ensure_ascii=False),
+                "blocks": json.dumps(blocks or [], ensure_ascii=False),
+                "instructions": row.get("instructions"),
+                "organ_emisor": row.get("organ_emisor"),
+                "normativa": row.get("normativa"),
+                "warnings": json.dumps(warnings or [], ensure_ascii=False),
+                "now": datetime.now(UTC),
+            },
+        )
+        version = await self.get_template_version(template_id, version_id)
+        if version is None:
+            raise ImiConfigurationError(
+                details={"template_version_id": str(version_id)}
+            )
+        await self._idempotency_put(
+            "template-publish",
+            idempotency_key,
+            request_hash,
+            {"template_id": str(template_id), "template_version_id": str(version_id)},
+        )
+        return version, True
+
+    async def deactivate_template_core(
+        self,
+        template_id: uuid.UUID,
+        idempotency_key: str | None = None,
+        request_hash: str = "",
+    ) -> tuple[Template, bool]:
+        existing = await self._idempotency_get(
+            "template-deactivate", idempotency_key, request_hash
+        )
+        if existing:
+            template = await self.get_template(uuid.UUID(str(existing["template_id"])))
+            if template is None:
+                raise TemplateNotFoundError(str(template_id))
+            return template, False
+        template = await self.get_template(template_id)
+        if template is None:
+            raise TemplateNotFoundError(str(template_id))
+        if not template.is_active:
+            raise TemplateInactiveError(str(template_id))
+        await self._session.execute(
+            text(
+                "UPDATE imi.document_templates SET active = false WHERE id = :template_id"
+            ),
+            {"template_id": template_id},
+        )
+        result = await self.get_template(template_id)
+        if result is None:
+            raise ImiConfigurationError(details={"template_id": str(template_id)})
+        await self._idempotency_put(
+            "template-deactivate",
+            idempotency_key,
+            request_hash,
+            {"template_id": str(template_id)},
+        )
+        return result, True
+
+    @staticmethod
+    def _import_payload(row: Any) -> dict[str, Any]:
+        warnings = _json_value(row.get("warnings_json"), [])
+        blocks = _json_value(row.get("blocks_json"), [])
+        return {
+            "id": row["id"],
+            "status": str(row["status"]),
+            "stage": str(row["stage"]),
+            "progress": int(row["progress"]),
+            "pages_total": row.get("pages_total"),
+            "pages_processed": int(row.get("pages_processed") or 0),
+            "body_template": row.get("body_template"),
+            "blocks": blocks if isinstance(blocks, list) else [],
+            "warnings": [str(item) for item in warnings]
+            if isinstance(warnings, list)
+            else [],
+            "error": row.get("error"),
+            "retryable": bool(row.get("retryable", False)),
+        }
+
+    async def get_template_import(self, import_id: uuid.UUID) -> dict[str, Any] | None:
+        result = await self._session.execute(
+            text(
+                "SELECT id, status, stage, progress, pages_total, pages_processed, "
+                "body_template, blocks_json, warnings_json, error, retryable, template_version_id "
+                "FROM imi.template_import_jobs WHERE id = :id"
+            ),
+            {"id": import_id},
+        )
+        row = result.mappings().first()
+        if row is None:
+            return None
+        payload = self._import_payload(row)
+        version_id = row.get("template_version_id")
+        if version_id:
+            version = await self._version_by_id(version_id)
+            if version is not None:
+                payload["template_version"] = version
+        else:
+            payload["template_version"] = None
+        return payload
+
+    async def get_template_import_source(
+        self, import_id: uuid.UUID
+    ) -> tuple[str, str | None, bytes] | None:
+        result = await self._session.execute(
+            text(
+                "SELECT original_filename, content_type, source_bytes "
+                "FROM imi.template_import_jobs WHERE id = :id"
+            ),
+            {"id": import_id},
+        )
+        row = result.mappings().first()
+        if row is None:
+            return None
+        return (
+            str(row["original_filename"]),
+            row["content_type"],
+            bytes(row["source_bytes"]),
+        )
+
+    async def _version_by_id(self, version_id: uuid.UUID) -> dict[str, Any] | None:
+        result = await self._session.execute(
+            text(
+                "SELECT v.id, v.template_id, v.version, v.body_template, v.created_at, "
+                "COALESCE(cfg.status, 'PUBLISHED') AS status, COALESCE(cfg.revision, 1) AS revision, "
+                "cfg.fields_json, cfg.rules_json, cfg.blocks_json, cfg.instructions, "
+                "cfg.extraction_warnings, COALESCE(cfg.updated_at, v.created_at) AS updated_at "
+                "FROM imi.document_template_versions AS v "
+                "LEFT JOIN imi.template_version_configs AS cfg ON cfg.template_version_id = v.id "
+                "WHERE v.id = :version_id"
+            ),
+            {"version_id": version_id},
+        )
+        row = result.mappings().first()
+        return await self._version_payload(row) if row else None
+
+    async def create_template_import(
+        self,
+        *,
+        name: str,
+        document_type: str,
+        filename: str,
+        content_type: str | None,
+        source_bytes: bytes,
+        body_template: str,
+        blocks: list[dict[str, Any]],
+        warnings: list[str],
+        pages_total: int,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = await self._idempotency_get(
+            "template-import", idempotency_key, request_hash
+        )
+        if existing:
+            payload = await self.get_template_import(
+                uuid.UUID(str(existing["import_id"]))
+            )
+            if payload is None:
+                raise ImiConfigurationError(
+                    details={"import_id": existing["import_id"]}
+                )
+            return payload, False
+        await self._document_type_id(document_type)
+        import_id = uuid.uuid4()
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_import_jobs "
+                "(id, name, document_type, original_filename, content_type, source_bytes, status, stage, progress, "
+                "pages_total, pages_processed, body_template, blocks_json, warnings_json, retryable) "
+                "VALUES (:id, :name, :document_type, :filename, :content_type, :source_bytes, 'SUCCEEDED', "
+                "'complete', 100, :pages_total, :pages_processed, :body, CAST(:blocks AS jsonb), CAST(:warnings AS jsonb), false)"
+            ),
+            {
+                "id": import_id,
+                "name": name.strip(),
+                "document_type": document_type.strip(),
+                "filename": filename,
+                "content_type": content_type,
+                "source_bytes": source_bytes,
+                "pages_total": pages_total,
+                "pages_processed": pages_total,
+                "body": body_template,
+                "blocks": json.dumps(blocks, ensure_ascii=False),
+                "warnings": json.dumps(warnings, ensure_ascii=False),
+            },
+        )
+        payload = await self.get_template_import(import_id)
+        if payload is None:
+            raise ImiConfigurationError(details={"import_id": str(import_id)})
+        await self._idempotency_put(
+            "template-import",
+            idempotency_key,
+            request_hash,
+            {"import_id": str(import_id)},
+        )
+        return payload, True
+
+    async def retry_template_import(
+        self,
+        import_id: uuid.UUID,
+        *,
+        body_template: str,
+        blocks: list[dict[str, Any]],
+        warnings: list[str],
+        pages_total: int,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = await self._idempotency_get(
+            "template-import-retry", idempotency_key, request_hash
+        )
+        if existing:
+            payload = await self.get_template_import(import_id)
+            if payload is None:
+                raise TemplateImportNotFoundError(str(import_id))
+            return payload, False
+        row_result = await self._session.execute(
+            text("SELECT id FROM imi.template_import_jobs WHERE id = :id FOR UPDATE"),
+            {"id": import_id},
+        )
+        if row_result.first() is None:
+            raise TemplateImportNotFoundError(str(import_id))
+        await self._session.execute(
+            text(
+                "UPDATE imi.template_import_jobs SET status = 'SUCCEEDED', stage = 'complete', progress = 100, "
+                "pages_total = :pages_total, pages_processed = :pages_total, body_template = :body, "
+                "blocks_json = CAST(:blocks AS jsonb), warnings_json = CAST(:warnings AS jsonb), "
+                "error = NULL, retryable = false, updated_at = now() WHERE id = :id"
+            ),
+            {
+                "id": import_id,
+                "pages_total": pages_total,
+                "body": body_template,
+                "blocks": json.dumps(blocks, ensure_ascii=False),
+                "warnings": json.dumps(warnings, ensure_ascii=False),
+            },
+        )
+        payload = await self.get_template_import(import_id)
+        if payload is None:
+            raise TemplateImportNotFoundError(str(import_id))
+        await self._idempotency_put(
+            "template-import-retry",
+            idempotency_key,
+            request_hash,
+            {"import_id": str(import_id)},
+        )
+        return payload, True
+
+    async def cancel_template_import(
+        self,
+        import_id: uuid.UUID,
+        *,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = await self._idempotency_get(
+            "template-import-cancel", idempotency_key, request_hash
+        )
+        if existing:
+            payload = await self.get_template_import(import_id)
+            if payload is None:
+                raise TemplateImportNotFoundError(str(import_id))
+            return payload, False
+        row_result = await self._session.execute(
+            text("SELECT id FROM imi.template_import_jobs WHERE id = :id FOR UPDATE"),
+            {"id": import_id},
+        )
+        if row_result.first() is None:
+            raise TemplateImportNotFoundError(str(import_id))
+        await self._session.execute(
+            text(
+                "UPDATE imi.template_import_jobs SET status = 'CANCELLED', stage = 'complete', "
+                "updated_at = now() WHERE id = :id AND status IN ('QUEUED', 'RUNNING')"
+            ),
+            {"id": import_id},
+        )
+        payload = await self.get_template_import(import_id)
+        if payload is None:
+            raise TemplateImportNotFoundError(str(import_id))
+        await self._idempotency_put(
+            "template-import-cancel",
+            idempotency_key,
+            request_hash,
+            {"import_id": str(import_id)},
+        )
+        return payload, True
+
+    async def create_template_analysis(
+        self,
+        *,
+        payload: dict[str, Any],
+        suggestions: list[dict[str, Any]],
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = await self._idempotency_get(
+            "template-analysis", idempotency_key, request_hash
+        )
+        if existing:
+            result = await self.get_template_analysis(
+                uuid.UUID(str(existing["analysis_id"]))
+            )
+            if result is None:
+                raise ImiConfigurationError(
+                    details={"analysis_id": existing["analysis_id"]}
+                )
+            return result, False
+        analysis_id = uuid.uuid4()
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_analysis_jobs "
+                "(id, status, payload_json, suggestions_json, warnings_json) "
+                "VALUES (:id, 'SUCCEEDED', CAST(:payload AS jsonb), CAST(:suggestions AS jsonb), '[]'::jsonb)"
+            ),
+            {
+                "id": analysis_id,
+                "payload": json.dumps(payload, ensure_ascii=False),
+                "suggestions": json.dumps(suggestions, ensure_ascii=False),
+            },
+        )
+        result = await self.get_template_analysis(analysis_id)
+        if result is None:
+            raise ImiConfigurationError(details={"analysis_id": str(analysis_id)})
+        await self._idempotency_put(
+            "template-analysis",
+            idempotency_key,
+            request_hash,
+            {"analysis_id": str(analysis_id)},
+        )
+        return result, True
+
+    async def get_template_analysis(
+        self, analysis_id: uuid.UUID
+    ) -> dict[str, Any] | None:
+        result = await self._session.execute(
+            text(
+                "SELECT id, status, suggestions_json, warnings_json, error "
+                "FROM imi.template_analysis_jobs WHERE id = :id"
+            ),
+            {"id": analysis_id},
+        )
+        row = result.mappings().first()
+        if row is None:
+            return None
+        suggestions = _json_value(row.get("suggestions_json"), [])
+        warnings = _json_value(row.get("warnings_json"), [])
+        return {
+            "id": row["id"],
+            "status": str(row["status"]),
+            "suggestions": suggestions if isinstance(suggestions, list) else [],
+            "warnings": warnings if isinstance(warnings, list) else [],
+            "error": row.get("error"),
+        }
 
     async def get_employee(self, employee_id: uuid.UUID) -> Employee | None:
         result = await self._session.execute(
@@ -215,8 +1283,7 @@ class ImiCoreRepository:
 
         existing_number = await self._session.execute(
             text(
-                "SELECT 1 FROM imi.employees "
-                "WHERE employee_number = :employee_number"
+                "SELECT 1 FROM imi.employees WHERE employee_number = :employee_number"
             ),
             {"employee_number": normalized_employee_number},
         )
@@ -245,9 +1312,7 @@ class ImiCoreRepository:
 
             raise EmployeeDocumentConflictError("document_number", "document_number")
 
-        position_id = await self._catalog_id(
-            "positions", position, field="position"
-        )
+        position_id = await self._catalog_id("positions", position, field="position")
         organizational_unit_id = await self._catalog_id(
             "organizational_units", department, field="department"
         )
@@ -499,14 +1564,14 @@ class ImiCoreRepository:
             params["case_type"] = case_type
         where = " AND ".join(clauses)
         count = await self._session.execute(
-                text(
-                    f"""
+            text(
+                f"""
                     SELECT count(*) FROM imi.case_files AS cf
                     JOIN imi.case_types AS ct ON ct.id = cf.case_type_id
                     WHERE {where}
                     """
-                ),
-                params,
+            ),
+            params,
         )
         total = int(count.scalar_one())
         rows = await self._session.execute(
@@ -607,11 +1672,19 @@ class ImiCoreRepository:
                 SELECT v.id
                 FROM imi.document_template_versions AS v
                 JOIN imi.document_templates AS t ON t.id = v.template_id
-                WHERE t.id = :template_id AND t.active
+                LEFT JOIN imi.template_version_configs AS cfg
+                  ON cfg.template_version_id = v.id
+                WHERE t.id = :template_id
+                  AND t.active
+                  AND (:template_version_id IS NULL OR v.id = :template_version_id)
+                  AND COALESCE(cfg.status, 'PUBLISHED') = 'PUBLISHED'
                 ORDER BY v.version DESC LIMIT 1
                 """
             ),
-            {"template_id": run.template_id},
+            {
+                "template_id": run.template_id,
+                "template_version_id": run.template_version_id,
+            },
         )
         template_version_id = version_row.scalar_one_or_none()
         if template_version_id is None:
@@ -774,6 +1847,7 @@ class ImiCoreRepository:
         self,
         *,
         template_id: uuid.UUID,
+        template_version_id: uuid.UUID | None = None,
         case_file_id: uuid.UUID,
         variables: dict[str, str],
         document: LegalDocument,
@@ -820,11 +1894,17 @@ class ImiCoreRepository:
                 )
             return draft
 
-        template = await self.get_template(template_id)
+        template = (
+            await self.get_template_at_version(template_id, template_version_id)
+            if template_version_id
+            else await self.get_published_template(template_id)
+        )
         if template is None:
             raise TemplateNotFoundError(str(template_id))
         if not template.is_active:
             raise TemplateInactiveError(str(template_id))
+        if template_version_id and template.status != "PUBLISHED":
+            raise TemplateConflictError(str(template_id))
         if document.document_type != str(template.document_type):
             raise StructuredDocumentInvalidError(details={"field": "document_type"})
         if await self.get_case_file(case_file_id) is None:
@@ -835,12 +1915,16 @@ class ImiCoreRepository:
                 """
                 SELECT v.id
                 FROM imi.document_template_versions AS v
+                LEFT JOIN imi.template_version_configs AS cfg
+                  ON cfg.template_version_id = v.id
                 WHERE v.template_id = :template_id
+                  AND (:template_version_id IS NULL OR v.id = :template_version_id)
+                  AND COALESCE(cfg.status, 'PUBLISHED') = 'PUBLISHED'
                 ORDER BY v.version DESC
                 LIMIT 1
                 """
             ),
-            {"template_id": template_id},
+            {"template_id": template_id, "template_version_id": template_version_id},
         )
         template_version_id = template_version.scalar_one_or_none()
         if template_version_id is None:
@@ -1044,6 +2128,7 @@ class ImiCoreRepository:
             id=row["id"],
             template_id=row["template_id"],
             case_file_id=row["case_file_id"],
+            template_version_id=row["template_version_id"],
             title=row["title"],
             status=DraftStatus.GENERADO,
             version=row["version"],
@@ -1201,24 +2286,50 @@ class ImiCoreRepository:
 
     @staticmethod
     def _template_from_row(row: Any) -> Template:
-        document_type = _enum_value(
-            str(row["document_type"]),
-            {"DISPOSICION": "disposicion", "NOTA_INICIO": "nota_inicio"},
-            "disposicion",
-        )
+        def json_value(value: Any, default: Any) -> Any:
+            if value is None:
+                return default
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return default
+            return value
+
+        document_type = str(row["document_type"]).lower()
+        fields = json_value(row.get("fields_json"), [])
+        rules = json_value(row.get("rules_json"), [])
+        blocks = json_value(row.get("blocks_json"), [])
+        warnings = json_value(row.get("extraction_warnings"), [])
+        if not isinstance(fields, list):
+            fields = []
+        if not isinstance(rules, list):
+            rules = []
+        if not isinstance(blocks, list):
+            blocks = []
+        if not isinstance(warnings, list):
+            warnings = []
         return Template(
             id=row["id"],
             name=row["name"],
-            document_type=TemplateDocumentType(document_type),
+            document_type=document_type,
             version=row["version"],
             body_template=row["body_template"],
             is_active=row["active"],
             created_at=row["created_at"],
-            updated_at=row["created_at"],
-            organ_emisor=row["organization_name"],
-            normativa=None,
+            updated_at=row.get("version_updated_at") or row["created_at"],
+            organ_emisor=row.get("organ_emisor") or row.get("organization_name"),
+            normativa=row.get("normativa"),
             description=row["description"],
             variables=list(row["variables"] or []),
+            template_version_id=row.get("template_version_id"),
+            status=str(row.get("status") or "PUBLISHED"),
+            revision=int(row.get("revision") or 1),
+            fields=fields,
+            rules=rules,
+            instructions=row.get("instructions"),
+            blocks=blocks,
+            extraction_warnings=[str(item) for item in warnings],
         )
 
     @staticmethod
