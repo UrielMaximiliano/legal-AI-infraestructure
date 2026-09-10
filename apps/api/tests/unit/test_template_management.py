@@ -53,6 +53,13 @@ def test_blanks_use_line_label() -> None:
     assert normalize_blank_fields("Monto: $ ____________") == "Monto: $ {{monto}}"
 
 
+def test_trailing_spaces_after_line_label_become_field() -> None:
+    assert normalize_blank_fields("Nombre:             ") == "Nombre: {{nombre}}"
+    assert normalize_blank_fields("Texto normal con espacios    ") == (
+        "Texto normal con espacios    "
+    )
+
+
 def test_date_segments_group_into_single_marker() -> None:
     result = normalize_blank_fields("Fecha: ____/____/______")
 

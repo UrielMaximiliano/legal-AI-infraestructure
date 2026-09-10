@@ -561,6 +561,7 @@ def normalize_blank_fields(body: str) -> str:
     def _normalize_line(line: str) -> str:
         marker_spans = [m.span() for m in MARKER_RE.finditer(line)]
         date_spans = [m.span() for m in _DATE_BLANK_RE.finditer(line)]
+        trailing_blank_start: int | None = None
 
         def _inside(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
             return any(
@@ -586,6 +587,15 @@ def normalize_blank_fields(body: str) -> str:
             selected.append((start, end, inner))
             last_end = end
 
+        # DOCX puede conservar un blanco como espacios finales después de la etiqueta.
+        if not selected:
+            trailing_blank = re.search(r"[ \t\u00a0]{4,}$", line)
+            if trailing_blank and _LABEL_PREFIX_RE.search(
+                line[: trailing_blank.start()]
+            ):
+                selected.append((trailing_blank.start(), trailing_blank.end(), None))
+                trailing_blank_start = trailing_blank.start()
+
         if not selected:
             return line
         pieces: list[str] = []
@@ -602,6 +612,8 @@ def normalize_blank_fields(body: str) -> str:
                 prefix = _LABEL_PREFIX_RE.search(line[:start])
                 raw_label = prefix.group(1).strip() if prefix else ""
             pieces.append(line[cursor:start])
+            if start == trailing_blank_start:
+                pieces.append(" ")
             pieces.append("{{" + _key_for_label(raw_label) + "}}")
             cursor = end
         pieces.append(line[cursor:])
