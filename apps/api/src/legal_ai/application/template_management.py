@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import date
 from io import BytesIO
@@ -17,6 +18,14 @@ from legal_ai.domain.errors import TemplateImportInvalidError
 MARKER_RE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\}\}")
 PLACEHOLDER_RE = re.compile(r"(?:_{4,}|\[([^\]\n]{2,80})\]|<<([^>\n]{2,80})>>)")
 FIELD_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+# Fecha textual con segmentos (____/____/______) que debe agruparse en un campo.
+_DATE_BLANK_RE = re.compile(r"_{2,}\s*[/\-.]\s*_{2,}(?:\s*[/\-.]\s*_{2,})+")
+# Etiqueta de la misma línea: "Nombre: ____", "Monto: $ ____".
+_LABEL_PREFIX_RE = re.compile(
+    r"([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]"
+    r"[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ _.\-]{0,60})"
+    r"\s*:\s*[$€£¥\s]*$"
+)
 
 
 def _value(item: object) -> dict[str, Any]:
@@ -507,6 +516,100 @@ def preview_document(
     return document, list(dict.fromkeys([*definition_errors, *value_errors])), warnings
 
 
+def _slugify_label(label: str) -> str:
+    normalized = unicodedata.normalize("NFKD", label.strip())
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", ascii_text.lower()).strip("_")
+    if not slug or not FIELD_KEY_RE.fullmatch(slug):
+        return ""
+    return slug
+
+
+def normalize_blank_fields(body: str) -> str:
+    """Convierte blancos (____, ____/____/______, [...] , <<...>>) en {{marcador}}.
+
+    Usa la etiqueta de la misma línea ("Nombre: ____" -> "{{nombre}}"),
+    agrupa segmentos de fecha en un solo campo, reutiliza la misma clave
+    para etiquetas duplicadas, usa fallback estable ``campo_N`` sin etiqueta,
+    preserva ``{{variable}}`` existente y no convierte texto normal.
+    """
+
+    used: set[str] = set(marker_keys(body))
+    label_to_key: dict[str, str] = {}
+    fallback_next = 1
+
+    def _key_for_label(raw_label: str) -> str:
+        nonlocal fallback_next
+        slug = _slugify_label(raw_label) if raw_label else ""
+        if not slug:
+            while True:
+                candidate = f"campo_{fallback_next}"
+                fallback_next += 1
+                if candidate not in used:
+                    used.add(candidate)
+                    return candidate
+        if slug in label_to_key:
+            return label_to_key[slug]
+        if slug not in used:
+            label_to_key[slug] = slug
+            used.add(slug)
+            return slug
+        # Misma etiqueta que un {{marcador}} ya existente: reutilizar.
+        label_to_key[slug] = slug
+        return slug
+
+    def _normalize_line(line: str) -> str:
+        marker_spans = [m.span() for m in MARKER_RE.finditer(line)]
+        date_spans = [m.span() for m in _DATE_BLANK_RE.finditer(line)]
+
+        def _inside(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
+            return any(
+                span_start <= start and end <= span_end
+                for span_start, span_end in spans
+            )
+
+        # Reutiliza PLACEHOLDER_RE para blancos simples y con etiqueta interna.
+        candidates: list[tuple[int, int, str | None]] = [
+            (m.start(), m.end(), (m.group(1) or m.group(2)))
+            for m in PLACEHOLDER_RE.finditer(line)
+            if not _inside(m.start(), m.end(), date_spans)
+        ]
+        for match in _DATE_BLANK_RE.finditer(line):
+            candidates.append((match.start(), match.end(), None))
+        candidates.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+        # Descarta solapes conservando el primero (fecha agrupada gana).
+        selected: list[tuple[int, int, str | None]] = []
+        last_end = -1
+        for start, end, inner in candidates:
+            if start < last_end:
+                continue
+            selected.append((start, end, inner))
+            last_end = end
+
+        if not selected:
+            return line
+        pieces: list[str] = []
+        cursor = 0
+        for start, end, inner in selected:
+            if _inside(start, end, marker_spans):
+                continue
+            inner_label = (inner or "").strip(" _-") if inner is not None else ""
+            if inner_label and (set(inner_label) <= {"_"} or inner_label.isdigit()):
+                inner_label = ""
+            if inner_label:
+                raw_label = inner_label
+            else:
+                prefix = _LABEL_PREFIX_RE.search(line[:start])
+                raw_label = prefix.group(1).strip() if prefix else ""
+            pieces.append(line[cursor:start])
+            pieces.append("{{" + _key_for_label(raw_label) + "}}")
+            cursor = end
+        pieces.append(line[cursor:])
+        return "".join(pieces)
+
+    return "\n".join(_normalize_line(line) for line in body.split("\n"))
+
+
 def suggestions_for_body(body: str, fields: Sequence[object]) -> list[dict[str, Any]]:
     known = {str(_value(item).get("key")) for item in fields}
     grouped: dict[str, dict[str, Any]] = {}
@@ -572,6 +675,7 @@ def extract_file_content(
                     "El archivo contiene tablas; revisá su representación en el editor."
                 )
         body = "\n".join(parts)
+        body = normalize_blank_fields(body)
         return body, body_to_blocks(body), list(dict.fromkeys(warnings)), 1
     if lower_name.endswith(".pdf") or content_type == "application/pdf":
         try:
@@ -589,6 +693,7 @@ def extract_file_content(
                     )
                 page_text.append(text.strip())
             body = "\n\n".join(text for text in page_text if text)
+            body = normalize_blank_fields(body)
             return (
                 body,
                 body_to_blocks(body),
