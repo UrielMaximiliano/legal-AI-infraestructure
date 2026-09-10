@@ -15,6 +15,7 @@ from legal_ai.schemas.case_file import (
     TransitionRequest,
     UpdateCaseFileRequest,
 )
+from legal_ai.schemas.document import CreateManualDraftRequest, LegalDocument
 from legal_ai.schemas.employee import (
     CreateEmployeeRequest,
     EmployeeResponse,
@@ -233,3 +234,31 @@ class TestErrorResponse:
             errors=errors,
         )
         assert len(error.errors) == 1
+
+
+def test_manual_draft_request_accepts_typed_template_values() -> None:
+    document = LegalDocument(
+        document_type="resolucion",
+        title="Plantilla de prueba",
+        dispositive_intro="DISPONE:",
+        articles=[{"number": 1, "text": ""}],
+        closing="Comuníquese.",
+        blocks=[
+            {
+                "id": "block-1",
+                "type": "paragraph",
+                "content": "Importe {{monto}}",
+                "level": None,
+            }
+        ],
+    )
+
+    request = CreateManualDraftRequest(
+        template_id=uuid.uuid4(),
+        template_version_id=uuid.uuid4(),
+        case_file_id=uuid.uuid4(),
+        variables={"monto": 250000, "habilitado": False},
+        document=document,
+    )
+
+    assert request.variables == {"monto": 250000, "habilitado": False}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
@@ -67,7 +68,7 @@ class StructuredDocumentService:
         *,
         template_id: uuid.UUID,
         case_file_id: uuid.UUID,
-        variables: dict[str, str],
+        variables: Mapping[str, object],
         document: LegalDocument,
         actor: str,
         idempotency_key: str | None = None,
@@ -120,7 +121,7 @@ class StructuredDocumentService:
             context_hash=hashlib.sha256(
                 json.dumps(context, sort_keys=True).encode("utf-8")
             ).hexdigest(),
-            variables_used=variables,
+            variables_used={key: str(value) for key, value in variables.items()},
             request_id=None,
             idempotency_key=idempotency_key,
             created_at=now,
@@ -253,7 +254,9 @@ class StructuredDocumentService:
         )
 
     @staticmethod
-    def _validate_variables(required: list[str], supplied: dict[str, str]) -> None:
+    def _validate_variables(
+        required: list[str], supplied: Mapping[str, object]
+    ) -> None:
         missing = set(required) - set(supplied)
         unexpected = set(supplied) - set(required)
         if missing or unexpected:

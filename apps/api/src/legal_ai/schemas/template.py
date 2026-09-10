@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 TemplateFieldType = Literal[
     "text", "textarea", "date", "number", "currency", "boolean", "select"
 ]
+TemplateVariableValue = str | int | float | bool
 TemplateRuleType = Literal["validation", "visibility", "derived"]
 TemplateConditionOperator = Literal[
     "equals",
@@ -41,7 +42,7 @@ class TemplateField(BaseModel):
     type: TemplateFieldType = "text"
     help: str | None = Field(default=None, max_length=2_000)
     required: bool = False
-    default_value: str | int | float | bool | None = None
+    default_value: TemplateVariableValue | None = None
     options: list[TemplateFieldOption] = Field(default_factory=list)
     order: int | None = Field(default=None, ge=0)
     read_only: bool = False

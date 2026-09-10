@@ -81,3 +81,13 @@ def test_generation_request_rejects_hostile_variable_keys() -> None:
             case_file_id="00000000-0000-0000-0000-000000000000",
             variables={"Authorization": "secret"},
         )
+
+
+def test_generation_request_normalizes_typed_template_values() -> None:
+    request = RagDraftGenerationRequest(
+        template_id="00000000-0000-0000-0000-000000000000",
+        case_file_id="00000000-0000-0000-0000-000000000000",
+        variables={"monto": 250000, "habilitado": False},
+    )
+
+    assert request.variables == {"monto": "250000", "habilitado": "false"}

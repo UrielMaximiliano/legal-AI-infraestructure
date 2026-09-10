@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
 
 from legal_ai.schemas.rag import RagSource
-from legal_ai.schemas.template import TemplateBlock
+from legal_ai.schemas.template import TemplateBlock, TemplateVariableValue
 
 _CITATION_RE = re.compile(r"^SRC-[0-9]{3}$")
 _HUMAN_REVIEW_WARNING = "BORRADOR NO VINCULANTE; REVISION HUMANA OBLIGATORIA."
@@ -167,7 +167,7 @@ class CreateManualDraftRequest(BaseModel):
     template_id: UUID
     template_version_id: UUID | None = None
     case_file_id: UUID
-    variables: dict[str, str] = Field(default_factory=dict)
+    variables: dict[str, TemplateVariableValue] = Field(default_factory=dict)
     document: LegalDocument
 
 

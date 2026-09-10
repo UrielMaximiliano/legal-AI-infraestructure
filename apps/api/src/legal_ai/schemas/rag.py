@@ -42,15 +42,25 @@ class RagDraftGenerationRequest(BaseModel):
     variables: dict[str, str] = Field(default_factory=dict)
     retrieval: RagRetrievalRequest = Field(default_factory=RagRetrievalRequest)
 
-    @field_validator("variables")
+    @field_validator("variables", mode="before")
     @classmethod
-    def validate_variables(cls, value: dict[str, str]) -> dict[str, str]:
+    def validate_variables(cls, value: object) -> dict[str, str]:
+        if not isinstance(value, dict):
+            raise ValueError("RAG_VARIABLE_INVALID")
         if len(value) > 64:
             raise ValueError("RAG_VARIABLES_TOO_MANY")
+        normalized: dict[str, str] = {}
         for key, item in value.items():
-            if not _VARIABLE_RE.fullmatch(key) or not 0 < len(item.strip()) <= 500:
+            if not isinstance(key, str) or not isinstance(
+                item, (str, int, float, bool)
+            ):
                 raise ValueError("RAG_VARIABLE_INVALID")
-        return {key: item.strip() for key, item in value.items()}
+            text = str(item).lower() if isinstance(item, bool) else str(item)
+            text = text.strip()
+            if not _VARIABLE_RE.fullmatch(key) or not 0 < len(text) <= 500:
+                raise ValueError("RAG_VARIABLE_INVALID")
+            normalized[key] = text
+        return normalized
 
 
 class RagTextRewriteRequest(BaseModel):

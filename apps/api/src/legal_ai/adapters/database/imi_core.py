@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -1849,7 +1850,7 @@ class ImiCoreRepository:
         template_id: uuid.UUID,
         template_version_id: uuid.UUID | None = None,
         case_file_id: uuid.UUID,
-        variables: dict[str, str],
+        variables: Mapping[str, object],
         document: LegalDocument,
         actor: str,
         idempotency_key: str,
