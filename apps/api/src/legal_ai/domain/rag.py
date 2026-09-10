@@ -157,6 +157,7 @@ class RagGenerationRun:
     template_id: uuid.UUID
     request_hash: str
     query_hash: str
+    template_version_id: uuid.UUID | None = None
     embedding_model: str = EMBEDDING_MODEL
     embedding_dimensions: int = EMBEDDING_DIMENSIONS
     profile_code: str = "legacy"

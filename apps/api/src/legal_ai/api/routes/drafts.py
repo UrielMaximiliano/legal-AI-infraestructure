@@ -168,6 +168,7 @@ async def create_manual_draft(
         async with ImiCoreUnitOfWork() as core_uow:
             draft = await core_uow.core.create_manual_draft(
                 template_id=body.template_id,
+                template_version_id=body.template_version_id,
                 case_file_id=body.case_file_id,
                 variables=body.variables,
                 document=body.document,

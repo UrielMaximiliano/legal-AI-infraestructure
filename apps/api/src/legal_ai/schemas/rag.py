@@ -37,6 +37,7 @@ class RagDraftGenerationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     template_id: UUID
+    template_version_id: UUID | None = None
     case_file_id: UUID
     variables: dict[str, str] = Field(default_factory=dict)
     retrieval: RagRetrievalRequest = Field(default_factory=RagRetrievalRequest)
@@ -213,6 +214,7 @@ class RagDraftSummary(BaseModel):
 
     id: UUID
     template_id: UUID
+    template_version_id: UUID | None = None
     case_file_id: UUID
     title: str
     content: str

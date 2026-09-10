@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
 
 from legal_ai.schemas.rag import RagSource
+from legal_ai.schemas.template import TemplateBlock
 
 _CITATION_RE = re.compile(r"^SRC-[0-9]{3}$")
 _HUMAN_REVIEW_WARNING = "BORRADOR NO VINCULANTE; REVISION HUMANA OBLIGATORIA."
@@ -118,14 +119,17 @@ class LegalDocument(DraftDocument):
     document_type: str = Field(min_length=1, max_length=50)
     locale: str = Field(default="es-AR", min_length=2, max_length=16)
     institutional_header: str = Field(default="", max_length=2_000)
+    blocks: list[TemplateBlock] = Field(default_factory=list)
 
     def validate_for_approval(self) -> None:
         """Validate the minimum legal shape before a review can be approved."""
 
         if self.document_type == "nota_inicio":
             paragraphs = (*self.visto, *self.considerandos)
-            if not self.title.strip() or not paragraphs or any(
-                not item.text.strip() for item in paragraphs
+            if (
+                not self.title.strip()
+                or not paragraphs
+                or any(not item.text.strip() for item in paragraphs)
             ):
                 raise ValueError("STRUCTURED_DOCUMENT_INCOMPLETE")
             return
@@ -138,8 +142,10 @@ class LegalDocument(DraftDocument):
             "signature": self.signature,
         }
         missing = [name for name, value in required.items() if not value.strip()]
-        if missing or not self.articles or any(
-            not article.text.strip() for article in self.articles
+        if (
+            missing
+            or not self.articles
+            or any(not article.text.strip() for article in self.articles)
         ):
             raise ValueError("STRUCTURED_DOCUMENT_INCOMPLETE")
 
@@ -159,6 +165,7 @@ class CreateManualDraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     template_id: UUID
+    template_version_id: UUID | None = None
     case_file_id: UUID
     variables: dict[str, str] = Field(default_factory=dict)
     document: LegalDocument

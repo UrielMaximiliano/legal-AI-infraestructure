@@ -39,22 +39,23 @@ from legal_ai.application.rag_generation import (
     SQLAlchemyRagAuditStore,
 )
 from legal_ai.application.rag_retrieval import RagRetrievalService
+from legal_ai.application.template_service import TemplateConflictError
 from legal_ai.config import settings
 from legal_ai.domain.errors import DomainError
 from legal_ai.domain.rag import RagGenerationRun
 from legal_ai.ports.embedding import InferencePriority
 from legal_ai.ports.structured_generation import StructuredGenerationError
 from legal_ai.schemas.rag import (
-  RagDraftGenerationRequest,
-  RagDraftGenerationResponse,
-  RagDraftSummary,
-  RagGenerationSummary,
-  RagRetrievalSummary,
-  RagRunResponse,
-  RagRunSourceResponse,
-  RagSource,
-  RagTextRewriteRequest,
-  RagTextRewriteResponse,
+    RagDraftGenerationRequest,
+    RagDraftGenerationResponse,
+    RagDraftSummary,
+    RagGenerationSummary,
+    RagRetrievalSummary,
+    RagRunResponse,
+    RagRunSourceResponse,
+    RagSource,
+    RagTextRewriteRequest,
+    RagTextRewriteResponse,
 )
 
 router = APIRouter(tags=["rag"])
@@ -320,7 +321,7 @@ async def _validate_generation_context(
     body: RagDraftGenerationRequest,
 ) -> tuple[object, object]:
     template, case_file = await _validate_reference_context(
-        body.template_id, body.case_file_id
+        body.template_id, body.case_file_id, body.template_version_id
     )
     missing = set(getattr(template, "variables", ())) - set(body.variables)
     if missing:
@@ -332,17 +333,27 @@ async def _validate_generation_context(
 
 
 async def _validate_reference_context(
-    template_id: UUID, case_file_id: UUID
+    template_id: UUID,
+    case_file_id: UUID,
+    template_version_id: UUID | None = None,
 ) -> tuple[object, object]:
     if settings.rag_profile.code == "imi_leg_06b":
         async with ImiCoreUnitOfWork() as uow:
             if uow.core is None:
                 raise RagGenerationError("RAG_AUDIT_UNAVAILABLE")
-            template = await uow.core.get_template(template_id)
+            template = (
+                await uow.core.get_template_at_version(
+                    template_id, template_version_id
+                )
+                if template_version_id
+                else await uow.core.get_published_template(template_id)
+            )
             if template is None:
                 raise TemplateNotFoundError(str(template_id))
             if not template.is_active:
                 raise TemplateInactiveError(str(template_id))
+            if template_version_id and template.status != "PUBLISHED":
+                raise TemplateConflictError(str(template_id))
             case_file = await uow.core.get_case_file(case_file_id)
             if case_file is None:
                 raise CaseFileNotFoundError(str(case_file_id))
@@ -366,7 +377,7 @@ async def _validate_template_context(template_id: UUID) -> object:
         async with ImiCoreUnitOfWork() as uow:
             if uow.core is None:
                 raise RagGenerationError("RAG_AUDIT_UNAVAILABLE")
-            template = await uow.core.get_template(template_id)
+            template = await uow.core.get_published_template(template_id)
     else:
         async with UnitOfWork() as uow:
             template = await uow.templates.get_by_id(template_id)
@@ -430,6 +441,7 @@ def _result_response(
         draft=RagDraftSummary(
             id=draft.id,
             template_id=draft.template_id,
+            template_version_id=draft.template_version_id,
             case_file_id=draft.case_file_id,
             title=draft.title,
             content=draft.content or "",

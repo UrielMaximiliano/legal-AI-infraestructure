@@ -49,6 +49,7 @@ class DraftResponse(BaseModel):
 
     id: UUID
     template_id: UUID
+    template_version_id: UUID | None = None
     case_file_id: UUID
     title: str
     document_type: str = "otros"

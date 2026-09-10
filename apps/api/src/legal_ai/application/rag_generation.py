@@ -296,6 +296,11 @@ class RagGenerationService:
         return sha256_json(
             {
                 "template_id": str(request.template_id),
+                "template_version_id": (
+                    str(request.template_version_id)
+                    if request.template_version_id
+                    else None
+                ),
                 "case_file_id": str(request.case_file_id),
                 "variables": request.variables,
                 "retrieval": request.retrieval.model_dump(mode="json"),
@@ -473,6 +478,7 @@ class RagGenerationService:
             id=uuid.uuid4(),
             case_file_id=request.case_file_id,
             template_id=request.template_id,
+            template_version_id=request.template_version_id,
             request_hash=request_hash,
             query_hash=query.query_hash,
             idempotency_key_hash=key_hash,
@@ -819,6 +825,7 @@ class RagGenerationService:
         draft = Draft(
             id=uuid.uuid4(),
             template_id=request.template_id,
+            template_version_id=run.template_version_id,
             case_file_id=request.case_file_id,
             title=structured.title,
             content=structured.render_for_review(),

@@ -24,6 +24,7 @@ class Draft:
     context_hash: str
     created_at: datetime
     updated_at: datetime
+    template_version_id: UUID | None = None
     content: str | None = None
     document: dict[str, object] | None = None
     document_type: str = "otros"
