@@ -10,6 +10,24 @@ diagrama del runtime y otro del pipeline RAG.
 El contrato para integrar el BFF de IMI LEG con esta API está en
 [`docs/imi-leg-legal-ai-contract.md`](docs/imi-leg-legal-ai-contract.md).
 
+## Persistencia aislada de IMI LEG
+
+La base `legal_ai` existente se conserva para el RAG histórico de decretos.
+IMI LEG tiene un bootstrap separado para `imi_leg_core` (auth, datos
+operativos, documentos y exportaciones) y `imi_disposiciones_rag` (solo
+disposiciones y `halfvec(2560)`). Ambos esquemas están normalizados en 3FN y
+no comparten foreign keys. La configuración y el procedimiento están en
+[`docs/database-architecture.md`](docs/database-architecture.md); para
+levantar las bases nuevas en local usar:
+
+```bash
+docker compose -f compose.imi-leg.yaml up -d
+python tools/validate_database_contract.py
+```
+
+No usar los volúmenes nuevos para el corpus de decretos ni reutilizar
+`postgres_data` para disposiciones.
+
 Las variables contractuales de Ollama para embeddings son `OLLAMA_EMBEDDING_BASE_URL`,
 `OLLAMA_EMBEDDING_TOKEN` y `OLLAMA_EMBEDDING_TIMEOUT_SECONDS`. Los nombres
 `OLLAMA_BASE_URL`, `OLLAMA_API_TOKEN` y `OLLAMA_TIMEOUT_SECONDS` se mantienen

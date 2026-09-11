@@ -1,9 +1,9 @@
 """Parser DOCX read-only para detección determinista de placeholders.
 
-Cubre párrafos, tablas, encabezados y pies; tolera runs partidos porque
-opera sobre el texto concatenado de cada contenedor. Detecta
+Cubre párrafos, tablas, encabezados, pies, cuadros de texto y bookmarks; tolera
+runs partidos porque opera sobre el texto concatenado de cada contenedor. Detecta
 ``{{campo}}``, ``{campo}``, ``[campo]``, ``<<campo>>``, ``[COMPLETAR]``,
-blancos con guiones, elipsis y controles nativos soportados por
+blancos con guiones, elipsis, bookmarks y controles nativos soportados por
 python-docx/lxml (w:sdt, MERGEFIELD, FORMTEXT/FORMCHECKBOX).
 
 Seguridad: valida extensión/MIME, rechaza DOCM/macros, valida ZIP
@@ -475,7 +475,98 @@ class DocxParser:
         for block_hit in self._block_sdt_hits(document, base_order=order):
             hits.append(block_hit)
             order += 1
+        for structural_hit in self._structural_hits(document, base_order=order):
+            hits.append(structural_hit)
+            order += 1
         return hits
+
+    def _structural_hits(
+        self, document: DocumentObject, *, base_order: int
+    ) -> list[_RawHit]:
+        """Detect text boxes and bookmark names absent from python-docx APIs."""
+        found: list[_RawHit] = []
+        containers: list[tuple[Any, PlaceholderOrigin, int]] = [
+            (document.element.body, PlaceholderOrigin.TEXT_BOX, 0),
+        ]
+        for section_index, section in enumerate(document.sections):
+            containers.extend(
+                (
+                    (
+                        section.header._element,
+                        PlaceholderOrigin.TEXT_BOX,
+                        section_index,
+                    ),
+                    (
+                        section.footer._element,
+                        PlaceholderOrigin.TEXT_BOX,
+                        section_index,
+                    ),
+                )
+            )
+
+        order = base_order
+        for container, origin, section_index in containers:
+            try:
+                text_boxes = container.findall(".//w:txbxContent", namespaces=_NS)
+            except Exception:
+                text_boxes = []
+            for text_box_index, text_box in enumerate(text_boxes):
+                paragraphs = text_box.findall(".//w:p", namespaces=_NS)
+                for paragraph_index, paragraph in enumerate(paragraphs):
+                    text = "".join(
+                        node.text or ""
+                        for node in paragraph.findall(".//w:t", namespaces=_NS)
+                    )
+                    native = self._native_hits(
+                        paragraph,
+                        origin=origin,
+                        paragraph_index=paragraph_index,
+                        table_index=text_box_index,
+                        table_row=None,
+                        table_col=None,
+                        section_index=section_index,
+                        base_order=order,
+                    )
+                    found.extend(native)
+                    order += len(native)
+                    if text:
+                        textual = self._textual_hits(
+                            text,
+                            origin=origin,
+                            paragraph_index=paragraph_index,
+                            table_index=text_box_index,
+                            table_row=None,
+                            table_col=None,
+                            section_index=section_index,
+                            base_order=order,
+                        )
+                        found.extend(textual)
+                        order += len(textual)
+
+            try:
+                bookmarks = container.findall(".//w:bookmarkStart", namespaces=_NS)
+            except Exception:
+                bookmarks = []
+            for bookmark in bookmarks:
+                name = str(bookmark.get(f"{{{_WORD_NS}}}name", "") or "").strip()
+                if not name or name.lower() == "_goback":
+                    continue
+                found.append(
+                    _RawHit(
+                        original_text=f"BOOKMARK {name[:120]}",
+                        raw_key=name[:80],
+                        syntax=PlaceholderSyntax.NATIVE_BOOKMARK,
+                        origin=PlaceholderOrigin.BOOKMARK,
+                        order=order,
+                        paragraph_index=None,
+                        table_index=None,
+                        table_row=None,
+                        table_col=None,
+                        section_index=section_index,
+                    )
+                )
+                order += 1
+        return found
 
     def _collect_table(
         self,
@@ -488,6 +579,18 @@ class DocxParser:
     ) -> None:
         for row_index, row in enumerate(table.rows):
             for col_index, cell in enumerate(row.cells):
+                if not cell.text.strip():
+                    collect(
+                        f"Celda vacía {row_index + 1}-{col_index + 1}: ___",
+                        cell._tc,
+                        origin=origin,
+                        paragraph_index=None,
+                        table_index=table_index,
+                        table_row=row_index,
+                        table_col=col_index,
+                        section_index=section_index,
+                    )
+                    continue
                 for para_index, paragraph in enumerate(cell.paragraphs):
                     collect(
                         paragraph.text,
@@ -877,6 +980,7 @@ class DocxParser:
                 PlaceholderSyntax.COMPLETAR,
                 PlaceholderSyntax.NATIVE_SDT,
                 PlaceholderSyntax.NATIVE_FORMFIELD,
+                PlaceholderSyntax.NATIVE_BOOKMARK,
             }:
                 key = normalize_key(
                     hit.raw_key, fallback=_fallback() if not hit.raw_key else ""

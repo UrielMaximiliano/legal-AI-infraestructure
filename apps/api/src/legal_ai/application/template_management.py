@@ -11,8 +11,8 @@ from typing import Any
 
 from docx import Document
 from docx.table import Table
-from docx.text.paragraph import Paragraph
 
+from legal_ai.domain.docx_placeholders import normalize_key
 from legal_ai.domain.errors import TemplateImportInvalidError
 
 MARKER_RE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\}\}")
@@ -26,6 +26,7 @@ _LABEL_PREFIX_RE = re.compile(
     r"[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ _.\-]{0,60})"
     r"\s*:\s*[$€£¥\s]*$"
 )
+_WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
 
 def _value(item: object) -> dict[str, Any]:
@@ -39,6 +40,22 @@ def _value(item: object) -> dict[str, Any]:
 
 def _text(value: object) -> str:
     return "" if value is None else str(value)
+
+
+def _valid_cuit(value: object) -> bool:
+    digits = re.sub(r"[-\s]", "", str(value))
+    if not re.fullmatch(r"\d{11}", digits):
+        return False
+    weights = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
+    check_digit = 11 - sum(
+        int(digit) * weight
+        for digit, weight in zip(digits[:10], weights, strict=True)
+    ) % 11
+    if check_digit == 11:
+        check_digit = 0
+    elif check_digit == 10:
+        check_digit = 9
+    return check_digit == int(digits[-1])
 
 
 def body_to_blocks(body: str) -> list[dict[str, Any]]:
@@ -444,9 +461,7 @@ def validate_values(
             r"[^\s@]+@[^\s@]+\.[^\s@]+", str(value)
         ):
             errors.append(message)
-        if rule.get("format") == "cuit" and not re.fullmatch(
-            r"\d{11}", re.sub(r"[-\s]", "", str(value))
-        ):
+        if rule.get("format") == "cuit" and not _valid_cuit(value):
             errors.append(message)
     return list(dict.fromkeys(errors))
 
@@ -661,7 +676,7 @@ TEMPLATE_EXTRACTOR_VERSION = "docx-parser-v1"
 
 
 def parser_candidates_to_safe(candidates: Sequence[object]) -> list[dict[str, Any]]:
-    """Convert DocxParser candidates to PII-free import candidates."""
+    """Convert parser candidates to bounded, auditable import candidates."""
     safe: list[dict[str, Any]] = []
     for item in candidates:
         as_dict = getattr(item, "to_safe_dict", None)
@@ -669,14 +684,62 @@ def parser_candidates_to_safe(candidates: Sequence[object]) -> list[dict[str, An
         key = str(payload.get("normalized_key") or payload.get("key") or "").strip()
         if not key:
             continue
+        syntax_value = getattr(item, "syntax", payload.get("syntax", "BLANK"))
+        syntax = str(getattr(syntax_value, "value", syntax_value)).upper()
+        origin_value = getattr(item, "origin", payload.get("origin", "PARAGRAPH"))
+        origin = str(getattr(origin_value, "value", origin_value)).upper()
+        kind_value = getattr(item, "field_kind", payload.get("field_kind", "TEXT"))
+        field_kind = str(getattr(kind_value, "value", kind_value)).upper()
+        original_text = str(getattr(item, "original_text", ""))[:200]
+        locations = payload.get("locations", [])
+        if not isinstance(locations, list):
+            locations = []
+        status = (
+            "suggested"
+            if syntax in {"BLANK", "ELLIPSIS", "COMPLETAR"}
+            else "confirmed"
+        )
+        field_type = {
+            "DATE": "date",
+            "NUMBER": "number",
+            "CURRENCY": "currency",
+            "CHECKBOX": "boolean",
+        }.get(field_kind, "text")
+        key_lower = key.lower()
+        if "cuit" in key_lower or "cuil" in key_lower:
+            field_type = "text"
+        suggested_format = (
+            "email"
+            if field_kind == "EMAIL" or "email" in key_lower or "correo" in key_lower
+            else "cuit"
+            if "cuit" in key_lower or "cuil" in key_lower
+            else None
+        )
+        explanation = str(
+            getattr(item, "explanation", "")
+            or payload.get("explanation")
+            or "Candidato detectado por reglas determinísticas."
+        )[:500]
         safe.append(
             {
                 "key": key,
-                "origin": str(payload.get("origin") or "PARAGRAPH"),
-                "syntax": str(payload.get("syntax") or "BLANK"),
-                "confidence": float(payload.get("confidence") or 0.5),
-                "field_kind": str(payload.get("field_kind") or "TEXT"),
-                "occurrences": int(payload.get("occurrences") or 1),
+                "origin": origin,
+                "syntax": syntax,
+                "confidence": float(
+                    getattr(item, "confidence", payload.get("confidence") or 0.5)
+                ),
+                "field_kind": field_kind,
+                "occurrences": int(
+                    getattr(item, "occurrences", payload.get("occurrences") or 1)
+                ),
+                "original_text": original_text or None,
+                "fragment": original_text or None,
+                "label": key.replace("_", " ").replace(".", " ").title(),
+                "type": field_type,
+                "format": suggested_format,
+                "status": status,
+                "explanation": explanation,
+                "locations": locations,
             }
         )
     return safe
@@ -693,6 +756,17 @@ def suggestions_to_candidates(
             continue
         occurrences = item.get("occurrences") or []
         count = len(occurrences) if isinstance(occurrences, list) else 1
+        locations = [
+            {
+                key: value
+                for key, value in occurrence.items()
+                if key != "text"
+            }
+            for occurrence in occurrences
+            if isinstance(occurrence, Mapping)
+        ]
+        candidate_type = str(item.get("type") or "text")
+        suggested_format = item.get("format")
         safe.append(
             {
                 "key": key,
@@ -701,9 +775,104 @@ def suggestions_to_candidates(
                 "confidence": float(item.get("confidence") or 0.55),
                 "field_kind": "TEXT",
                 "occurrences": max(1, count),
+                "original_text": None,
+                "fragment": None,
+                "label": str(item.get("label") or key),
+                "type": candidate_type,
+                "format": suggested_format,
+                "status": "suggested",
+                "explanation": str(
+                    item.get("explanation")
+                    or "Fragmento ambiguo sugerido para revisión humana."
+                )[:500],
+                "locations": locations,
             }
         )
     return safe
+
+
+def _xml_text(element: Any) -> str:
+    return "".join(
+        node.text or ""
+        for node in element.iter()
+        if str(node.tag).endswith("}t")
+    )
+
+
+def _append_docx_container(
+    container: Any,
+    document: Any,
+    parts: list[str],
+    warnings: list[str],
+) -> None:
+    for child in container.iterchildren():
+        if child.tag.endswith("}p"):
+            text = _xml_text(child)
+            if text.strip():
+                parts.append(text)
+        elif child.tag.endswith("}tbl"):
+            table = Table(child, document)
+            rows = []
+            for row_index, row in enumerate(table.rows):
+                cells = []
+                for col_index, cell in enumerate(row.cells):
+                    cells.append(
+                        cell.text.strip()
+                        or f"{{{{celda_vacia_{row_index + 1}_{col_index + 1}}}}}"
+                    )
+                rows.append(" | ".join(cells))
+            parts.extend(row for row in rows if row.strip())
+            warnings.append(
+                "El archivo contiene tablas; revisá su representación en el editor."
+            )
+        elif child.tag.endswith("}sdt"):
+            content = child.find(
+                ".//w:sdtContent", namespaces={"w": _WORD_NS}
+            )
+            if content is not None:
+                for nested in content.iterchildren():
+                    if nested.tag.endswith("}p"):
+                        text = _xml_text(nested)
+                        if text.strip():
+                            parts.append(text)
+                    elif nested.tag.endswith("}tbl"):
+                        table = Table(nested, document)
+                        rows = [
+                            " | ".join(
+                                cell.text.strip()
+                                or (
+                                    f"{{{{celda_vacia_{row_index + 1}_"
+                                    f"{col_index + 1}}}}}"
+                                )
+                                for col_index, cell in enumerate(row.cells)
+                            )
+                            for row_index, row in enumerate(table.rows)
+                        ]
+                        parts.extend(row for row in rows if row.strip())
+                        warnings.append(
+                            "El archivo contiene tablas; revisá su representación "
+                            "en el editor."
+                        )
+                if not list(content.iterchildren()):
+                    text = _xml_text(content)
+                    if text.strip():
+                        parts.append(text)
+
+    for text_box in container.findall(
+        ".//w:txbxContent", namespaces={"w": _WORD_NS}
+    ):
+        for paragraph in text_box.findall(".//w:p", namespaces={"w": _WORD_NS}):
+            text = _xml_text(paragraph)
+            if text.strip():
+                parts.append(text)
+
+    for bookmark in container.findall(
+        ".//w:bookmarkStart", namespaces={"w": _WORD_NS}
+    ):
+        name = str(bookmark.get(f"{{{_WORD_NS}}}name", "") or "").strip()
+        key = normalize_key(name) if name.lower() != "_goback" else ""
+        if key:
+            parts.append(f"{{{{{key}}}}}")
 
 
 def extract_file_content(
@@ -722,21 +891,10 @@ def extract_file_content(
             ) from exc
         parts: list[str] = []
         warnings: list[str] = []
-        for child in document.element.body.iterchildren():
-            if child.tag.endswith("}p"):
-                text = Paragraph(child, document).text
-                if text.strip():
-                    parts.append(text)
-            elif child.tag.endswith("}tbl"):
-                table = Table(child, document)
-                rows = [
-                    " | ".join(cell.text.strip() for cell in row.cells)
-                    for row in table.rows
-                ]
-                parts.extend(row for row in rows if row.strip())
-                warnings.append(
-                    "El archivo contiene tablas; revisá su representación en el editor."
-                )
+        _append_docx_container(document.element.body, document, parts, warnings)
+        for section in document.sections:
+            _append_docx_container(section.header._element, document, parts, warnings)
+            _append_docx_container(section.footer._element, document, parts, warnings)
         body = "\n".join(parts)
         body = normalize_blank_fields(body)
         return body, body_to_blocks(body), list(dict.fromkeys(warnings)), 1

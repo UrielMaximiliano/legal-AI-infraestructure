@@ -182,7 +182,7 @@ class TemplateVersionResponse(BaseModel):
 
 
 class TemplateImportCandidate(BaseModel):
-    """Safe extraction candidate without source text or PII."""
+    """Bounded extraction candidate with no surrounding document content."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -192,6 +192,14 @@ class TemplateImportCandidate(BaseModel):
     confidence: float = Field(ge=0, le=1)
     field_kind: str = Field(min_length=1, max_length=20)
     occurrences: int = Field(ge=1)
+    original_text: str | None = Field(default=None, max_length=200)
+    fragment: str | None = Field(default=None, max_length=200)
+    label: str | None = Field(default=None, max_length=200)
+    type: TemplateFieldType | None = None
+    format: Literal["email", "cuit"] | None = None
+    status: Literal["confirmed", "suggested", "ignored", "unresolved"] = "suggested"
+    explanation: str | None = Field(default=None, max_length=500)
+    locations: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TemplateImportDecision(BaseModel):

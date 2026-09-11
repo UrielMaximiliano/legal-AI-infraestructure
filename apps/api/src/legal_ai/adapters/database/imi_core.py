@@ -1162,6 +1162,10 @@ class ImiCoreRepository:
         pages_total: int,
         idempotency_key: str | None,
         request_hash: str,
+        source_sha256: str | None = None,
+        source_size_bytes: int | None = None,
+        extractor_version: str | None = None,
+        candidates: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], bool]:
         existing = await self._idempotency_get(
             "template-import-retry", idempotency_key, request_hash
@@ -1172,16 +1176,26 @@ class ImiCoreRepository:
                 raise TemplateImportNotFoundError(str(import_id))
             return payload, False
         row_result = await self._session.execute(
-            text("SELECT id FROM imi.template_import_jobs WHERE id = :id FOR UPDATE"),
+            text(
+                "SELECT id, source_bytes FROM imi.template_import_jobs "
+                "WHERE id = :id FOR UPDATE"
+            ),
             {"id": import_id},
         )
-        if row_result.first() is None:
+        row = row_result.mappings().first()
+        if row is None:
             raise TemplateImportNotFoundError(str(import_id))
+        source_bytes = bytes(row.get("source_bytes") or b"")
+        computed_sha = source_sha256 or hashlib.sha256(source_bytes).hexdigest()
+        computed_size = source_size_bytes or len(source_bytes)
         await self._session.execute(
             text(
                 "UPDATE imi.template_import_jobs SET status = 'SUCCEEDED', stage = 'complete', progress = 100, "
                 "pages_total = :pages_total, pages_processed = :pages_total, body_template = :body, "
                 "blocks_json = CAST(:blocks AS jsonb), warnings_json = CAST(:warnings AS jsonb), "
+                "source_sha256 = :source_sha256, source_size_bytes = :source_size_bytes, "
+                "extractor_version = :extractor_version, candidates_json = CAST(:candidates AS jsonb), "
+                "decisions_json = '[]'::jsonb, decided_by = NULL, decided_at = NULL, "
                 "error = NULL, retryable = false, updated_at = now() WHERE id = :id"
             ),
             {
@@ -1190,6 +1204,10 @@ class ImiCoreRepository:
                 "body": body_template,
                 "blocks": json.dumps(blocks, ensure_ascii=False),
                 "warnings": json.dumps(warnings, ensure_ascii=False),
+                "source_sha256": computed_sha,
+                "source_size_bytes": computed_size,
+                "extractor_version": extractor_version,
+                "candidates": json.dumps(candidates or [], ensure_ascii=False),
             },
         )
         payload = await self.get_template_import(import_id)

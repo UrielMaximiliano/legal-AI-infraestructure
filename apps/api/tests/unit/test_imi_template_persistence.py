@@ -114,8 +114,10 @@ def test_extractor_version_is_pinned() -> None:
     assert TEMPLATE_EXTRACTOR_VERSION == "docx-parser-v1"
 
 
-def test_parser_candidates_exclude_source_text() -> None:
+def test_parser_candidates_keep_bounded_marker_metadata() -> None:
     class _Candidate:
+        original_text = "{{expediente}}"
+
         def to_safe_dict(self) -> dict[str, object]:
             return {
                 "normalized_key": "expediente",
@@ -128,8 +130,9 @@ def test_parser_candidates_exclude_source_text() -> None:
 
     safe = parser_candidates_to_safe([_Candidate()])
     assert safe[0]["key"] == "expediente"
-    assert "original_text" not in safe[0]
+    assert safe[0]["original_text"] == "{{expediente}}"
     assert safe[0]["occurrences"] == 2
+    assert safe[0]["status"] == "confirmed"
 
 
 def test_suggestions_fallback_has_no_pii() -> None:
@@ -143,7 +146,7 @@ def test_suggestions_fallback_has_no_pii() -> None:
     safe = suggestions_to_candidates(suggestions)
     assert safe[0]["key"] == "nombre"
     assert safe[0]["occurrences"] == 1
-    assert "fragment" not in safe[0]
+    assert safe[0]["fragment"] is None
     assert "text" not in safe[0]
 
 

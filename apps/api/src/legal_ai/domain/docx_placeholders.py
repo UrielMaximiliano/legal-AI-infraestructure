@@ -19,6 +19,8 @@ class PlaceholderOrigin(StrEnum):
     TABLE_CELL = "TABLE_CELL"
     HEADER = "HEADER"
     FOOTER = "FOOTER"
+    TEXT_BOX = "TEXT_BOX"
+    BOOKMARK = "BOOKMARK"
 
 
 class PlaceholderSyntax(StrEnum):
@@ -34,6 +36,7 @@ class PlaceholderSyntax(StrEnum):
     NATIVE_SDT = "NATIVE_SDT"
     NATIVE_MERGEFIELD = "NATIVE_MERGEFIELD"
     NATIVE_FORMFIELD = "NATIVE_FORMFIELD"
+    NATIVE_BOOKMARK = "NATIVE_BOOKMARK"
 
 
 class PlaceholderStatus(StrEnum):
@@ -64,6 +67,7 @@ _CONFIDENCE: dict[PlaceholderSyntax, float] = {
     PlaceholderSyntax.NATIVE_SDT: 0.90,
     PlaceholderSyntax.NATIVE_MERGEFIELD: 0.90,
     PlaceholderSyntax.NATIVE_FORMFIELD: 0.85,
+    PlaceholderSyntax.NATIVE_BOOKMARK: 0.85,
     PlaceholderSyntax.SINGLE_BRACE: 0.80,
     PlaceholderSyntax.BRACKET: 0.80,
     PlaceholderSyntax.COMPLETAR: 0.60,
@@ -82,6 +86,7 @@ _EXPLANATIONS: dict[PlaceholderSyntax, str] = {
     PlaceholderSyntax.NATIVE_SDT: "Control estructurado nativo (w:sdt) del documento.",
     PlaceholderSyntax.NATIVE_MERGEFIELD: "Campo MERGEFIELD nativo de Word.",
     PlaceholderSyntax.NATIVE_FORMFIELD: "Campo de formulario heredado de Word.",
+    PlaceholderSyntax.NATIVE_BOOKMARK: "Marcador nativo de Word usado como campo.",
 }
 
 # Transiciones permitidas; solo un humano puede confirmar/publicar.
@@ -146,6 +151,8 @@ def infer_field_kind(normalized_key: str, syntax: PlaceholderSyntax) -> FieldKin
         "check" in key or key in {"si_no", "acepto", "checkbox"}
     ):
         return FieldKind.CHECKBOX
+    if "cuit" in key or "cuil" in key:
+        return FieldKind.TEXT
     if any(token in key for token in ("fecha", "date", "dia", "ano", "year")):
         return FieldKind.DATE
     if any(

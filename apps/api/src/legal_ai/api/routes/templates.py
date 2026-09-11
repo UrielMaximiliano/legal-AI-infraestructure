@@ -21,7 +21,7 @@ from fastapi import (
 
 from legal_ai.adapters.database.imi_core import ImiCoreUnitOfWork
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
-from legal_ai.application.docx_parser import DOCX_MIME, DocxParser
+from legal_ai.application.docx_parser import DocxParseError, DocxParser
 from legal_ai.application.template_management import (
     TEMPLATE_EXTRACTOR_VERSION,
     extract_file_content,
@@ -106,20 +106,28 @@ def _extraction_provenance(
         "wordprocessingml.document" in (content_type or "")
     )
     if is_docx:
-        try:
-            declared = content_type if content_type == DOCX_MIME else None
-            parsed = DocxParser().parse_bytes(
-                data, filename=filename, declared_mime=declared
-            )
-            candidates = parser_candidates_to_safe(parsed.candidates)
-        except Exception:
-            candidates = []
+        parsed = DocxParser().parse_bytes(
+            data, filename=filename, declared_mime=content_type
+        )
+        candidates = parser_candidates_to_safe(parsed.candidates)
     else:
-        try:
-            candidates = suggestions_to_candidates(suggestions_for_body(body, []))
-        except Exception:
-            candidates = []
+        candidates = suggestions_to_candidates(suggestions_for_body(body, []))
     return source_sha256, source_size, extractor_version, candidates
+
+
+def _extraction_provenance_or_invalid(
+    filename: str,
+    content_type: str | None,
+    data: bytes,
+    body: str,
+) -> tuple[str, int, str, list[dict[str, Any]]]:
+    try:
+        return _extraction_provenance(filename, content_type, data, body)
+    except DocxParseError as exc:
+        raise TemplateImportInvalidError(
+            "El archivo DOCX no es válido.",
+            details={"reason": exc.code},
+        ) from exc
 
 
 def _reject_legacy_write() -> None:
@@ -524,12 +532,23 @@ async def start_template_import(
             "El archivo supera el límite de 20 MiB.",
             details={"field": "file", "limit_bytes": _MAX_TEMPLATE_FILE_BYTES},
         )
+    is_docx = filename.lower().endswith(".docx") or "wordprocessingml.document" in (
+        file.content_type or ""
+    )
+    if is_docx:
+        source_sha256, source_size, extractor_version, candidates = (
+            _extraction_provenance_or_invalid(filename, file.content_type, data, "")
+        )
+    else:
+        source_sha256 = hashlib.sha256(data).hexdigest()
+        source_size = len(data)
+        extractor_version = TEMPLATE_EXTRACTOR_VERSION
+        candidates = []
     body, blocks, warnings, pages_total = extract_file_content(
         filename, file.content_type, data
     )
-    source_sha256, source_size, extractor_version, candidates = (
-        _extraction_provenance(filename, file.content_type, data, body)
-    )
+    if not is_docx:
+        candidates = suggestions_to_candidates(suggestions_for_body(body, []))
     request_hash = _request_hash(
         {
             "name": name,
@@ -603,9 +622,23 @@ async def retry_template_import(
         if source is None:
             raise TemplateImportNotFoundError(str(import_id))
         filename, content_type, data = source
+        is_docx = filename.lower().endswith(".docx") or "wordprocessingml.document" in (
+            content_type or ""
+        )
+        if is_docx:
+            source_sha256, source_size, extractor_version, candidates = (
+                _extraction_provenance_or_invalid(filename, content_type, data, "")
+            )
+        else:
+            source_sha256 = hashlib.sha256(data).hexdigest()
+            source_size = len(data)
+            extractor_version = TEMPLATE_EXTRACTOR_VERSION
+            candidates = []
         body, blocks, warnings, pages_total = extract_file_content(
             filename, content_type, data
         )
+        if not is_docx:
+            candidates = suggestions_to_candidates(suggestions_for_body(body, []))
         job, _created = await uow.core.retry_template_import(
             import_id,
             body_template=body,
@@ -619,6 +652,10 @@ async def retry_template_import(
                     "sha256": hashlib.sha256(data).hexdigest(),
                 }
             ),
+            source_sha256=source_sha256,
+            source_size_bytes=source_size,
+            extractor_version=extractor_version,
+            candidates=candidates,
         )
     return TemplateImportResponse.model_validate(job)
 

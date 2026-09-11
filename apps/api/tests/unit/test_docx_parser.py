@@ -180,6 +180,18 @@ class TestLocations:
         assert fecha.locations[0].table_row == 1
         assert fecha.locations[0].table_col == 1
 
+    def test_empty_table_cell_is_a_suggested_blank(self) -> None:
+        document = Document()
+        table = document.add_table(rows=1, cols=2)
+        table.cell(0, 0).text = "Descripción"
+        result = _parse_bytes(_save_bytes(document))
+        candidate = _by_key(result, "celda_vacia_1_2")
+        assert candidate.syntax == PlaceholderSyntax.BLANK
+        assert candidate.origin == PlaceholderOrigin.TABLE_CELL
+        assert candidate.locations[0].table_row == 0
+        assert candidate.locations[0].table_col == 1
+        assert candidate.confidence <= 0.55
+
     def test_header_and_footer(self) -> None:
         document = Document()
         document.add_paragraph("Cuerpo {{cuerpo}}.")
@@ -222,6 +234,53 @@ class TestLocations:
         assert PlaceholderOrigin.PARAGRAPH in origins
         assert PlaceholderOrigin.TABLE_CELL in origins
 
+    def test_text_box_is_detected_with_structural_origin(self) -> None:
+        document = Document()
+        document.add_paragraph("Cuerpo.")
+        data = _save_bytes(document)
+
+        def _inject(payload: bytes) -> bytes:
+            root = etree.fromstring(payload)
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            run = root.find("w:body/w:p/w:r", ns)
+            assert run is not None
+            pict = etree.SubElement(run, "{" + ns["w"] + "}pict")
+            text_box = etree.SubElement(pict, "{" + ns["w"] + "}txbxContent")
+            box_paragraph = etree.SubElement(text_box, "{" + ns["w"] + "}p")
+            box_run = etree.SubElement(box_paragraph, "{" + ns["w"] + "}r")
+            text = etree.SubElement(box_run, "{" + ns["w"] + "}t")
+            text.text = "Caja {{domicilio}}"
+            return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+        result = _parse_bytes(_patch_document_xml(data, _inject))
+        candidate = _by_key(result, "domicilio")
+        assert candidate.origin == PlaceholderOrigin.TEXT_BOX
+        assert candidate.locations[0].table_index == 0
+
+    def test_bookmark_is_detected_as_native_field(self) -> None:
+        document = Document()
+        document.add_paragraph("Firma.")
+        data = _save_bytes(document)
+
+        def _inject(payload: bytes) -> bytes:
+            root = etree.fromstring(payload)
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            paragraph = root.find("w:body/w:p", ns)
+            assert paragraph is not None
+            start = etree.Element("{" + ns["w"] + "}bookmarkStart")
+            start.set("{" + ns["w"] + "}id", "7")
+            start.set("{" + ns["w"] + "}name", "firma_responsable")
+            end = etree.Element("{" + ns["w"] + "}bookmarkEnd")
+            end.set("{" + ns["w"] + "}id", "7")
+            paragraph.insert(0, start)
+            paragraph.append(end)
+            return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+        result = _parse_bytes(_patch_document_xml(data, _inject))
+        candidate = _by_key(result, "firma_responsable")
+        assert candidate.origin == PlaceholderOrigin.BOOKMARK
+        assert candidate.syntax == PlaceholderSyntax.NATIVE_BOOKMARK
+
 
 class TestCandidateShape:
     def test_all_fields_present(self) -> None:
@@ -246,6 +305,9 @@ class TestCandidateShape:
         )
         assert infer_field_kind("email_contacto", PlaceholderSyntax.DOUBLE_BRACE) == (
             FieldKind.EMAIL
+        )
+        assert infer_field_kind("cuit", PlaceholderSyntax.DOUBLE_BRACE) == (
+            FieldKind.TEXT
         )
         assert infer_field_kind("expediente", PlaceholderSyntax.DOUBLE_BRACE) == (
             FieldKind.NUMBER

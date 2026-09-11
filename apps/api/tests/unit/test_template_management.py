@@ -7,6 +7,7 @@ from legal_ai.application.template_management import (
     normalize_blank_fields,
     preview_document,
     suggestions_for_body,
+    validate_values,
 )
 
 
@@ -110,3 +111,46 @@ def test_extract_docx_normalizes_body_and_blocks() -> None:
 
     assert body == "Nombre: {{nombre}}"
     assert blocks[0]["content"] == "Nombre: {{nombre}}"
+
+
+def test_extract_docx_includes_header_footer_and_empty_table_fields() -> None:
+    from io import BytesIO
+
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph("Cuerpo")
+    document.add_table(rows=1, cols=2)
+    section = document.sections[0]
+    section.header.paragraphs[0].text = "Encabezado: ____________"
+    section.footer.paragraphs[0].text = "Pie: ____________"
+    payload = BytesIO()
+    document.save(payload)
+
+    body, _blocks, _warnings, _pages = extract_file_content(
+        "plantilla.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        payload.getvalue(),
+    )
+
+    assert "Cuerpo" in body
+    assert "Encabezado: {{encabezado}}" in body
+    assert "Pie: {{pie}}" in body
+    assert "{{celda_vacia_1_1}}" in body
+
+
+def test_cuit_validation_checks_the_check_digit() -> None:
+    fields = [{"key": "cuit", "type": "text"}]
+    rules = [
+        {
+            "type": "validation",
+            "field": "cuit",
+            "format": "cuit",
+            "message": "CUIT inválido",
+        }
+    ]
+
+    assert validate_values(fields, rules, {"cuit": "20-32964233-0"}) == []
+    assert validate_values(fields, rules, {"cuit": "20-32964233-1"}) == [
+        "CUIT inválido"
+    ]
