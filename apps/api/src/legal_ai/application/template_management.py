@@ -526,11 +526,11 @@ def _slugify_label(label: str) -> str:
 
 
 def normalize_blank_fields(body: str) -> str:
-    """Convierte blancos (____, ____/____/______, [...] , <<...>>) en {{marcador}}.
+    """Convierte blancos textuales en marcadores ``{{campo}}``.
 
     Usa la etiqueta de la misma línea ("Nombre: ____" -> "{{nombre}}"),
-    agrupa segmentos de fecha en un solo campo, reutiliza la misma clave
-    para etiquetas duplicadas, usa fallback estable ``campo_N`` sin etiqueta,
+    agrupa segmentos de fecha en un solo campo, reutiliza la misma clave para
+    etiquetas duplicadas, usa fallback estable ``campo_N`` sin etiqueta,
     preserva ``{{variable}}`` existente y no convierte texto normal.
     """
 
@@ -569,10 +569,12 @@ def normalize_blank_fields(body: str) -> str:
                 for span_start, span_end in spans
             )
 
-        # Reutiliza PLACEHOLDER_RE para blancos simples y con etiqueta interna.
+        # Los corchetes y ángulos se reservan para sugerencias, no se convierten
+        # automáticamente porque pueden ser referencias legales del documento.
         candidates: list[tuple[int, int, str | None]] = [
-            (m.start(), m.end(), (m.group(1) or m.group(2)))
+            (m.start(), m.end(), None)
             for m in PLACEHOLDER_RE.finditer(line)
+            if not (m.group(1) or m.group(2))
             if not _inside(m.start(), m.end(), date_spans)
         ]
         for match in _DATE_BLANK_RE.finditer(line):

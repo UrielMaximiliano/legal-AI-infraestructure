@@ -83,6 +83,9 @@ def test_fallback_campo_n_without_label_is_stable() -> None:
 def test_preserves_markers_and_does_not_convert_normal_text() -> None:
     body = "Expediente {{expediente}}.\nTexto normal sin blancos."
     assert normalize_blank_fields(body) == body
+    assert normalize_blank_fields("Referencia [Art. 1] del Código Civil.") == (
+        "Referencia [Art. 1] del Código Civil."
+    )
 
     preserved = normalize_blank_fields("Folio {{folio}}: ____________")
     assert "{{folio}}" in preserved
