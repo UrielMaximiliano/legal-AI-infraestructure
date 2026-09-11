@@ -130,7 +130,9 @@ def test_parser_candidates_keep_bounded_marker_metadata() -> None:
 
     safe = parser_candidates_to_safe([_Candidate()])
     assert safe[0]["key"] == "expediente"
-    assert safe[0]["original_text"] == "{{expediente}}"
+    assert "original_text" not in safe[0]
+    assert "fragment" not in safe[0]
+    assert "text" not in safe[0]
     assert safe[0]["occurrences"] == 2
     assert safe[0]["status"] == "confirmed"
 
@@ -146,7 +148,7 @@ def test_suggestions_fallback_has_no_pii() -> None:
     safe = suggestions_to_candidates(suggestions)
     assert safe[0]["key"] == "nombre"
     assert safe[0]["occurrences"] == 1
-    assert safe[0]["fragment"] is None
+    assert "fragment" not in safe[0]
     assert "text" not in safe[0]
 
 
@@ -749,8 +751,11 @@ def test_005_sql_guards_immutability_without_drops() -> None:
 def test_retry_preserves_original_provenance() -> None:
     source = getsource(ImiCoreRepository.retry_template_import)
     assert "UPDATE imi.template_import_jobs SET status" in source
-    assert "source_sha256" not in source
-    assert "candidates_json" not in source
+    # Retry recalculates provenance from stored source_bytes server-side:
+    # it re-reads the persisted bytes and re-hashes instead of trusting caller input.
+    assert "SELECT id, source_bytes FROM imi.template_import_jobs" in source
+    assert "hashlib.sha256(source_bytes).hexdigest()" in source
+    assert "candidates_json" in source
 
 
 def test_human_actor_rejects_edge_cases() -> None:

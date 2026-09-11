@@ -690,7 +690,6 @@ def parser_candidates_to_safe(candidates: Sequence[object]) -> list[dict[str, An
         origin = str(getattr(origin_value, "value", origin_value)).upper()
         kind_value = getattr(item, "field_kind", payload.get("field_kind", "TEXT"))
         field_kind = str(getattr(kind_value, "value", kind_value)).upper()
-        original_text = str(getattr(item, "original_text", ""))[:200]
         locations = payload.get("locations", [])
         if not isinstance(locations, list):
             locations = []
@@ -732,8 +731,6 @@ def parser_candidates_to_safe(candidates: Sequence[object]) -> list[dict[str, An
                 "occurrences": int(
                     getattr(item, "occurrences", payload.get("occurrences") or 1)
                 ),
-                "original_text": original_text or None,
-                "fragment": original_text or None,
                 "label": key.replace("_", " ").replace(".", " ").title(),
                 "type": field_type,
                 "format": suggested_format,
@@ -775,8 +772,6 @@ def suggestions_to_candidates(
                 "confidence": float(item.get("confidence") or 0.55),
                 "field_kind": "TEXT",
                 "occurrences": max(1, count),
-                "original_text": None,
-                "fragment": None,
                 "label": str(item.get("label") or key),
                 "type": candidate_type,
                 "format": suggested_format,

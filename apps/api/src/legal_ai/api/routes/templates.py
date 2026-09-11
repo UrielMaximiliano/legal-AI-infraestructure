@@ -21,6 +21,7 @@ from fastapi import (
 
 from legal_ai.adapters.database.imi_core import ImiCoreUnitOfWork
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
+from legal_ai.application.docx_parser import DOCX_MIME as DOCX_MIME
 from legal_ai.application.docx_parser import DocxParseError, DocxParser
 from legal_ai.application.template_management import (
     TEMPLATE_EXTRACTOR_VERSION,
@@ -106,10 +107,17 @@ def _extraction_provenance(
         "wordprocessingml.document" in (content_type or "")
     )
     if is_docx:
-        parsed = DocxParser().parse_bytes(
-            data, filename=filename, declared_mime=content_type
+        try:
+            parsed = DocxParser().parse_bytes(
+                data, filename=filename, declared_mime=content_type
+            )
+        except DocxParseError:
+            raise
+        except Exception:
+            parsed = None
+        candidates = (
+            parser_candidates_to_safe(parsed.candidates) if parsed is not None else []
         )
-        candidates = parser_candidates_to_safe(parsed.candidates)
     else:
         candidates = suggestions_to_candidates(suggestions_for_body(body, []))
     return source_sha256, source_size, extractor_version, candidates
