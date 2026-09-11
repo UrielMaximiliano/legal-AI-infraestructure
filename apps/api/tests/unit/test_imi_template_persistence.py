@@ -457,9 +457,7 @@ def test_core_repository_stays_isolated_from_legacy() -> None:
     assert "from legal_ai.adapters.database.models import" not in source
     from legal_ai.adapters.database.engine import get_session_factory
 
-    assert (
-        get_session_factory("core") is not get_session_factory("legacy")
-    )
+    assert get_session_factory("core") is not get_session_factory("legacy")
 
 
 def test_service_token_middleware_is_fail_closed() -> None:
@@ -468,3 +466,314 @@ def test_service_token_middleware_is_fail_closed() -> None:
     source = getsource(ServiceTokenMiddleware.dispatch)
     assert "SERVICE_AUTH_REQUIRED" in source
     assert "SERVICE_AUTH_INVALID" in source
+
+
+async def test_save_decisions_rejects_duplicate_key() -> None:
+    session = _FakeSession()
+    repo = _repo(session)
+    session.queue(
+        _Result(
+            row={
+                "id": uuid.uuid4(),
+                "status": "SUCCEEDED",
+                "candidates_json": [{"key": "nombre"}],
+            }
+        )
+    )
+    with pytest.raises(TemplateDefinitionInvalidError):
+        await repo.save_import_decisions(
+            uuid.uuid4(),
+            decisions=[
+                {"key": "nombre", "status": "CONFIRMED"},
+                {"key": "nombre", "status": "DISCARDED"},
+            ],
+            actor="revisor-imi",
+            idempotency_key=None,
+            request_hash="h" * 64,
+        )
+
+
+async def test_save_decisions_rejects_unknown_candidate() -> None:
+    session = _FakeSession()
+    repo = _repo(session)
+    session.queue(
+        _Result(
+            row={
+                "id": uuid.uuid4(),
+                "status": "SUCCEEDED",
+                "candidates_json": [{"key": "nombre"}],
+            }
+        )
+    )
+    with pytest.raises(TemplateDefinitionInvalidError):
+        await repo.save_import_decisions(
+            uuid.uuid4(),
+            decisions=[{"key": "inexistente", "status": "CONFIRMED"}],
+            actor="revisor-imi",
+            idempotency_key=None,
+            request_hash="h" * 64,
+        )
+
+
+async def test_save_decisions_rejects_invalid_status() -> None:
+    session = _FakeSession()
+    repo = _repo(session)
+    session.queue(
+        _Result(
+            row={
+                "id": uuid.uuid4(),
+                "status": "SUCCEEDED",
+                "candidates_json": [{"key": "nombre"}],
+            }
+        )
+    )
+    with pytest.raises(TemplateDefinitionInvalidError):
+        await repo.save_import_decisions(
+            uuid.uuid4(),
+            decisions=[{"key": "nombre", "status": "PENDING"}],
+            actor="revisor-imi",
+            idempotency_key=None,
+            request_hash="h" * 64,
+        )
+
+
+async def test_save_decisions_rejects_terminal_import() -> None:
+    from legal_ai.domain.errors import TemplateImportNotFoundError
+
+    session = _FakeSession()
+    repo = _repo(session)
+    session.queue(_Result(row={"id": uuid.uuid4(), "status": "FAILED"}))
+    with pytest.raises(TemplateImportNotFoundError):
+        await repo.save_import_decisions(
+            uuid.uuid4(),
+            decisions=[{"key": "nombre", "status": "CONFIRMED"}],
+            actor="revisor-imi",
+            idempotency_key=None,
+            request_hash="h" * 64,
+        )
+
+
+async def test_promote_rejects_discarded_still_referenced() -> None:
+    session = _FakeSession()
+    repo = _repo(session)
+    session.queue(
+        _Result(
+            row={
+                "id": uuid.uuid4(),
+                "name": "Plantilla",
+                "document_type": "DISPOSICION",
+                "body_template": "Hola {{nombre}}",
+                "blocks_json": [],
+                "warnings_json": [],
+                "candidates_json": [{"key": "nombre"}],
+                "decisions_json": [{"key": "nombre", "status": "DISCARDED"}],
+                "source_sha256": "a" * 64,
+                "source_size_bytes": 10,
+                "extractor_version": TEMPLATE_EXTRACTOR_VERSION,
+                "status": "SUCCEEDED",
+            }
+        )
+    )
+    with pytest.raises(TemplateDefinitionInvalidError):
+        await repo.promote_import_to_template(
+            uuid.uuid4(),
+            actor="revisor-imi",
+            idempotency_key=None,
+            request_hash="h" * 64,
+        )
+
+
+async def test_promote_happy_path_creates_draft_with_provenance() -> None:
+    from datetime import UTC, datetime
+
+    from legal_ai.domain.template import Template
+
+    session = _FakeSession()
+    repo = _repo(session)
+    import_id = uuid.uuid4()
+    session.queue(
+        _Result(
+            row={
+                "id": import_id,
+                "name": "Plantilla",
+                "document_type": "DISPOSICION",
+                "body_template": "Expediente {{expediente}}",
+                "blocks_json": [],
+                "warnings_json": [],
+                "candidates_json": [{"key": "expediente"}],
+                "decisions_json": [{"key": "expediente", "status": "CONFIRMED"}],
+                "source_sha256": "b" * 64,
+                "source_size_bytes": 10,
+                "extractor_version": TEMPLATE_EXTRACTOR_VERSION,
+                "status": "SUCCEEDED",
+            }
+        )
+    )
+
+    async def _fake_doc_type(_code: str) -> tuple[uuid.UUID, str]:
+        return uuid.uuid4(), "DISPOSICION"
+
+    async def _fake_org() -> tuple[uuid.UUID, str]:
+        return uuid.uuid4(), "IMI"
+
+    async def _fake_replace(
+        _version_id: uuid.UUID, _fields: list[dict[str, Any]]
+    ) -> None:
+        return None
+
+    async def _fake_get_template(_template_id: uuid.UUID) -> Template:
+        now = datetime.now(UTC)
+        return Template(
+            id=_template_id,
+            name="Plantilla",
+            document_type="DISPOSICION",
+            version=1,
+            body_template="Expediente {{expediente}}",
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+
+    repo._document_type_id = _fake_doc_type  # type: ignore[assignment]
+    repo._organization = _fake_org  # type: ignore[assignment]
+    repo._replace_variables = _fake_replace  # type: ignore[assignment]
+    repo.get_template = _fake_get_template  # type: ignore[assignment]
+
+    template, created = await repo.promote_import_to_template(
+        import_id,
+        actor="revisor-imi",
+        idempotency_key=None,
+        request_hash="h" * 64,
+    )
+    assert created is True
+    assert template.name == "Plantilla"
+    inserts = [
+        sql
+        for sql in session.executed
+        if "INSERT INTO imi.template_version_configs" in sql
+    ]
+    assert inserts
+    assert "source_import_id" in inserts[0]
+    assert any(
+        "UPDATE imi.template_import_jobs SET template_version_id" in sql
+        for sql in session.executed
+    )
+
+
+async def test_list_versions_paginates_in_sql_with_total() -> None:
+    session = _FakeSession()
+    repo = _repo(session)
+    session.queue(_Result(scalar=7))
+    session.queue(_Result(rows=[]))
+    items, total = await repo.list_template_versions(uuid.uuid4(), limit=5, offset=10)
+    assert items == []
+    assert total == 7
+    assert "SELECT count(*)" in session.executed[0]
+    assert "LIMIT :limit OFFSET :offset" in session.executed[1]
+
+
+def test_extraction_provenance_pdf_fallback_is_pii_free() -> None:
+    from legal_ai.api.routes.templates import _extraction_provenance
+
+    data = b"controlled-bytes"
+    sha, size, version, candidates = _extraction_provenance(
+        "plantilla.pdf", "application/pdf", data, "Nombre: ____"
+    )
+    assert sha == hashlib.sha256(data).hexdigest()
+    assert size == len(data)
+    assert version == TEMPLATE_EXTRACTOR_VERSION
+    assert candidates
+    assert all("fragment" not in item for item in candidates)
+    assert all("text" not in item for item in candidates)
+    assert all(item["occurrences"] >= 1 for item in candidates)
+
+
+def test_extraction_provenance_handles_parser_failure_without_pii() -> None:
+    from legal_ai.api.routes import templates as templates_module
+
+    original = templates_module.DocxParser
+
+    class _FailingParser:
+        def parse_bytes(self, *args: Any, **kwargs: Any) -> Any:
+            raise ValueError("parse-failure")
+
+    templates_module.DocxParser = _FailingParser  # type: ignore[assignment]
+    try:
+        sha, size, version, candidates = templates_module._extraction_provenance(
+            "plantilla.docx", templates_module.DOCX_MIME, b"bytes", "Hola"
+        )
+    finally:
+        templates_module.DocxParser = original  # type: ignore[assignment]
+    assert len(sha) == 64
+    assert size == len(b"bytes")
+    assert version == TEMPLATE_EXTRACTOR_VERSION
+    assert candidates == []
+
+
+async def test_bootstrap_ensure_executes_single_statements() -> None:
+    from legal_ai.adapters.database.imi_template_bootstrap import (
+        _STATEMENTS,
+        ensure_imi_template_provenance,
+    )
+
+    session = _FakeSession()
+    await ensure_imi_template_provenance(session)  # type: ignore[arg-type]
+    assert len(session.executed) == len(_STATEMENTS)
+    assert any("source_sha256" in sql for sql in session.executed)
+    assert any(
+        "ix_template_version_configs_source_import" in sql for sql in session.executed
+    )
+    for sql in session.executed:
+        assert sql.count(";") == 0
+
+
+def test_005_sql_guards_immutability_without_drops() -> None:
+    sql_path = (
+        Path(__file__).resolve().parents[4]
+        / "infra"
+        / "database"
+        / "imi-core"
+        / "init"
+        / "005_template_import_provenance.sql"
+    )
+    sql_text = sql_path.read_text(encoding="utf-8")
+    assert "ADD COLUMN IF NOT EXISTS" in sql_text
+    assert "DROP TABLE" not in sql_text
+    assert "DROP COLUMN" not in sql_text
+    assert "protect_published_template_configs" in sql_text
+    assert "protect_published_template_body" in sql_text
+    assert "DROP TRIGGER IF EXISTS" in sql_text
+    assert "ON DELETE SET NULL" in sql_text
+
+
+def test_retry_preserves_original_provenance() -> None:
+    source = getsource(ImiCoreRepository.retry_template_import)
+    assert "UPDATE imi.template_import_jobs SET status" in source
+    assert "source_sha256" not in source
+    assert "candidates_json" not in source
+
+
+def test_human_actor_rejects_edge_cases() -> None:
+    assert ImiCoreRepository._require_human_actor("  revisor-imi  ") == "revisor-imi"
+    with pytest.raises(ValidationDomainError):
+        ImiCoreRepository._require_human_actor("")
+    with pytest.raises(ValidationDomainError):
+        ImiCoreRepository._require_human_actor("   ")
+    with pytest.raises(ValidationDomainError):
+        ImiCoreRepository._require_human_actor("x" * 201)
+    for marker in ("AI-bot", "OLLAMA-model", "auto-publisher", "LLM-revisor"):
+        with pytest.raises(ValidationDomainError):
+            ImiCoreRepository._require_human_actor(marker)
+
+
+def test_save_decisions_request_requires_at_least_one() -> None:
+    from pydantic import ValidationError
+
+    from legal_ai.schemas.template import SaveImportDecisionsRequest
+
+    with pytest.raises(ValidationError):
+        SaveImportDecisionsRequest.model_validate({"decisions": []})
+    valid = SaveImportDecisionsRequest.model_validate(
+        {"decisions": [{"key": "nombre", "status": "CONFIRMED"}]}
+    )
+    assert valid.decisions[0].key == "nombre"
