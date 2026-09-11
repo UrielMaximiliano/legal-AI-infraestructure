@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Mapping
@@ -420,6 +421,21 @@ class ImiCoreRepository:
                 },
             )
 
+    @staticmethod
+    def _require_human_actor(actor: str | None) -> str:
+        """Validate the audit actor is human; AI/automation markers are rejected."""
+        from legal_ai.domain.docx_placeholders import validate_human_actor
+
+        try:
+            return validate_human_actor(actor or "")
+        except ValueError as exc:
+            from legal_ai.domain.errors import ValidationDomainError
+
+            raise ValidationDomainError(
+                "La publicación y las decisiones requieren un actor humano.",
+                details={"field": "X-Actor"},
+            ) from exc
+
     async def _version_payload(self, row: Any) -> dict[str, Any]:
         fields = _json_value(row.get("fields_json"), [])
         rules = _json_value(row.get("rules_json"), [])
@@ -474,6 +490,9 @@ class ImiCoreRepository:
             "extraction_warnings": [str(item) for item in warnings],
             "created_at": row["created_at"],
             "updated_at": row.get("updated_at") or row["created_at"],
+            "source_import_id": row.get("source_import_id"),
+            "source_sha256": row.get("source_sha256"),
+            "extractor_version": row.get("extractor_version"),
         }
 
     async def get_template_version(
@@ -485,7 +504,8 @@ class ImiCoreRepository:
                 "COALESCE(cfg.status, 'PUBLISHED') AS status, "
                 "COALESCE(cfg.revision, 1) AS revision, cfg.fields_json, cfg.rules_json, "
                 "cfg.blocks_json, cfg.instructions, cfg.extraction_warnings, "
-                "COALESCE(cfg.updated_at, v.created_at) AS updated_at "
+                "COALESCE(cfg.updated_at, v.created_at) AS updated_at, "
+                "cfg.source_import_id, cfg.source_sha256, cfg.extractor_version "
                 "FROM imi.document_template_versions AS v "
                 "JOIN imi.document_templates AS t ON t.id = v.template_id "
                 "LEFT JOIN imi.template_version_configs AS cfg "
@@ -498,25 +518,42 @@ class ImiCoreRepository:
         return await self._version_payload(row) if row else None
 
     async def list_template_versions(
-        self, template_id: uuid.UUID
+        self,
+        template_id: uuid.UUID,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        result = await self._session.execute(
+        count_result = await self._session.execute(
             text(
-                "SELECT v.id, v.version, v.body_template, v.created_at, "
-                "COALESCE(cfg.status, 'PUBLISHED') AS status, "
-                "COALESCE(cfg.revision, 1) AS revision, cfg.fields_json, cfg.rules_json, "
-                "cfg.blocks_json, cfg.instructions, cfg.extraction_warnings, "
-                "COALESCE(cfg.updated_at, v.created_at) AS updated_at "
-                "FROM imi.document_template_versions AS v "
+                "SELECT count(*) FROM imi.document_template_versions AS v "
                 "JOIN imi.document_templates AS t ON t.id = v.template_id "
-                "LEFT JOIN imi.template_version_configs AS cfg "
-                "ON cfg.template_version_id = v.id "
-                "WHERE t.id = :template_id ORDER BY v.version DESC"
+                "WHERE t.id = :template_id"
             ),
             {"template_id": template_id},
         )
+        total = int(count_result.scalar_one())
+        query = (
+            "SELECT v.id, v.version, v.body_template, v.created_at, "
+            "COALESCE(cfg.status, 'PUBLISHED') AS status, "
+            "COALESCE(cfg.revision, 1) AS revision, cfg.fields_json, cfg.rules_json, "
+            "cfg.blocks_json, cfg.instructions, cfg.extraction_warnings, "
+            "COALESCE(cfg.updated_at, v.created_at) AS updated_at, "
+            "cfg.source_import_id, cfg.source_sha256, cfg.extractor_version "
+            "FROM imi.document_template_versions AS v "
+            "JOIN imi.document_templates AS t ON t.id = v.template_id "
+            "LEFT JOIN imi.template_version_configs AS cfg "
+            "ON cfg.template_version_id = v.id "
+            "WHERE t.id = :template_id ORDER BY v.version DESC"
+        )
+        params: dict[str, Any] = {"template_id": template_id}
+        if limit is not None:
+            query += " LIMIT :limit OFFSET :offset"
+            params["limit"] = limit
+            params["offset"] = offset
+        result = await self._session.execute(text(query), params)
         rows = result.mappings().all()
-        return [await self._version_payload(row) for row in rows], len(rows)
+        return [await self._version_payload(row) for row in rows], total
 
     async def create_template(
         self,
@@ -816,7 +853,10 @@ class ImiCoreRepository:
         confirm_warnings: bool,
         idempotency_key: str | None,
         request_hash: str,
+        actor: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
+        # Human approval gate: publishing always requires an explicit human actor.
+        self._require_human_actor(actor)
         existing = await self._idempotency_get(
             "template-publish", idempotency_key, request_hash
         )
@@ -947,6 +987,8 @@ class ImiCoreRepository:
     def _import_payload(row: Any) -> dict[str, Any]:
         warnings = _json_value(row.get("warnings_json"), [])
         blocks = _json_value(row.get("blocks_json"), [])
+        candidates = _json_value(row.get("candidates_json"), [])
+        decisions = _json_value(row.get("decisions_json"), [])
         return {
             "id": row["id"],
             "status": str(row["status"]),
@@ -961,13 +1003,23 @@ class ImiCoreRepository:
             else [],
             "error": row.get("error"),
             "retryable": bool(row.get("retryable", False)),
+            "source_sha256": row.get("source_sha256"),
+            "source_size_bytes": row.get("source_size_bytes"),
+            "extractor_version": row.get("extractor_version"),
+            "candidates": candidates if isinstance(candidates, list) else [],
+            "decisions": decisions if isinstance(decisions, list) else [],
+            "decided_by": row.get("decided_by"),
+            "decided_at": row.get("decided_at"),
         }
 
     async def get_template_import(self, import_id: uuid.UUID) -> dict[str, Any] | None:
         result = await self._session.execute(
             text(
                 "SELECT id, status, stage, progress, pages_total, pages_processed, "
-                "body_template, blocks_json, warnings_json, error, retryable, template_version_id "
+                "body_template, blocks_json, warnings_json, error, retryable, "
+                "template_version_id, source_sha256, source_size_bytes, "
+                "extractor_version, candidates_json, decisions_json, "
+                "decided_by, decided_at "
                 "FROM imi.template_import_jobs WHERE id = :id"
             ),
             {"id": import_id},
@@ -1010,7 +1062,8 @@ class ImiCoreRepository:
                 "SELECT v.id, v.template_id, v.version, v.body_template, v.created_at, "
                 "COALESCE(cfg.status, 'PUBLISHED') AS status, COALESCE(cfg.revision, 1) AS revision, "
                 "cfg.fields_json, cfg.rules_json, cfg.blocks_json, cfg.instructions, "
-                "cfg.extraction_warnings, COALESCE(cfg.updated_at, v.created_at) AS updated_at "
+                "cfg.extraction_warnings, COALESCE(cfg.updated_at, v.created_at) AS updated_at, "
+                "cfg.source_import_id, cfg.source_sha256, cfg.extractor_version "
                 "FROM imi.document_template_versions AS v "
                 "LEFT JOIN imi.template_version_configs AS cfg ON cfg.template_version_id = v.id "
                 "WHERE v.id = :version_id"
@@ -1034,6 +1087,10 @@ class ImiCoreRepository:
         pages_total: int,
         idempotency_key: str | None,
         request_hash: str,
+        source_sha256: str | None = None,
+        source_size_bytes: int | None = None,
+        extractor_version: str | None = None,
+        candidates: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], bool]:
         existing = await self._idempotency_get(
             "template-import", idempotency_key, request_hash
@@ -1049,13 +1106,22 @@ class ImiCoreRepository:
             return payload, False
         await self._document_type_id(document_type)
         import_id = uuid.uuid4()
+        computed_sha = (
+            source_sha256
+            if source_sha256 is not None
+            else hashlib.sha256(source_bytes).hexdigest()
+        )
+        computed_size = source_size_bytes or len(source_bytes)
         await self._session.execute(
             text(
                 "INSERT INTO imi.template_import_jobs "
                 "(id, name, document_type, original_filename, content_type, source_bytes, status, stage, progress, "
-                "pages_total, pages_processed, body_template, blocks_json, warnings_json, retryable) "
+                "pages_total, pages_processed, body_template, blocks_json, warnings_json, retryable, "
+                "source_sha256, source_size_bytes, extractor_version, candidates_json, decisions_json) "
                 "VALUES (:id, :name, :document_type, :filename, :content_type, :source_bytes, 'SUCCEEDED', "
-                "'complete', 100, :pages_total, :pages_processed, :body, CAST(:blocks AS jsonb), CAST(:warnings AS jsonb), false)"
+                "'complete', 100, :pages_total, :pages_processed, :body, CAST(:blocks AS jsonb), "
+                "CAST(:warnings AS jsonb), false, :source_sha256, :source_size_bytes, "
+                ":extractor_version, CAST(:candidates AS jsonb), '[]'::jsonb)"
             ),
             {
                 "id": import_id,
@@ -1069,6 +1135,10 @@ class ImiCoreRepository:
                 "body": body_template,
                 "blocks": json.dumps(blocks, ensure_ascii=False),
                 "warnings": json.dumps(warnings, ensure_ascii=False),
+                "source_sha256": computed_sha,
+                "source_size_bytes": computed_size,
+                "extractor_version": extractor_version,
+                "candidates": json.dumps(candidates or [], ensure_ascii=False),
             },
         )
         payload = await self.get_template_import(import_id)
@@ -1171,6 +1241,269 @@ class ImiCoreRepository:
             {"import_id": str(import_id)},
         )
         return payload, True
+
+    async def save_import_decisions(
+        self,
+        import_id: uuid.UUID,
+        *,
+        decisions: list[dict[str, Any]],
+        actor: str,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Persist human decisions on extraction candidates with approval gate."""
+        human = self._require_human_actor(actor)
+        existing = await self._idempotency_get(
+            "template-import-decide", idempotency_key, request_hash
+        )
+        if existing:
+            payload = await self.get_template_import(import_id)
+            if payload is None:
+                raise TemplateImportNotFoundError(str(import_id))
+            return payload, False
+        result = await self._session.execute(
+            text(
+                "SELECT id, status, candidates_json FROM imi.template_import_jobs "
+                "WHERE id = :id FOR UPDATE"
+            ),
+            {"id": import_id},
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise TemplateImportNotFoundError(str(import_id))
+        if str(row["status"]) not in {"SUCCEEDED", "QUEUED", "RUNNING"}:
+            raise TemplateImportNotFoundError(str(import_id))
+        candidates = _json_value(row.get("candidates_json"), [])
+        candidate_keys = {
+            str(item.get("key"))
+            for item in (candidates if isinstance(candidates, list) else [])
+            if isinstance(item, dict) and item.get("key")
+        }
+        normalized: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for entry in decisions:
+            key = str(entry.get("key") or "").strip()
+            status = str(entry.get("status") or "").strip().upper()
+            if not key or status not in {"CONFIRMED", "DISCARDED"}:
+                from legal_ai.domain.errors import TemplateDefinitionInvalidError
+
+                raise TemplateDefinitionInvalidError(
+                    "Cada decisión debe indicar clave y CONFIRMED/DISCARDED.",
+                    details={"key": key},
+                )
+            if key in seen:
+                from legal_ai.domain.errors import TemplateDefinitionInvalidError
+
+                raise TemplateDefinitionInvalidError(
+                    "Decisión duplicada para el mismo candidato.",
+                    details={"key": key},
+                )
+            seen.add(key)
+            if candidate_keys and key not in candidate_keys:
+                from legal_ai.domain.errors import TemplateDefinitionInvalidError
+
+                raise TemplateDefinitionInvalidError(
+                    "La decisión no corresponde a un candidato extraído.",
+                    details={"key": key},
+                )
+            normalized.append({"key": key, "status": status})
+        now = datetime.now(UTC)
+        await self._session.execute(
+            text(
+                "UPDATE imi.template_import_jobs SET decisions_json = CAST(:decisions AS jsonb), "
+                "decided_by = :decided_by, decided_at = :decided_at, updated_at = now() "
+                "WHERE id = :id"
+            ),
+            {
+                "id": import_id,
+                "decisions": json.dumps(normalized, ensure_ascii=False),
+                "decided_by": human,
+                "decided_at": now,
+            },
+        )
+        payload = await self.get_template_import(import_id)
+        if payload is None:
+            raise TemplateImportNotFoundError(str(import_id))
+        await self._idempotency_put(
+            "template-import-decide",
+            idempotency_key,
+            request_hash,
+            {"import_id": str(import_id)},
+        )
+        return payload, True
+
+    async def promote_import_to_template(
+        self,
+        import_id: uuid.UUID,
+        *,
+        actor: str,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> tuple[Template, bool]:
+        """Create a DRAFT template+version from a reviewed import (human gate)."""
+        human = self._require_human_actor(actor)
+        _ = human
+        existing = await self._idempotency_get(
+            "template-import-promote", idempotency_key, request_hash
+        )
+        if existing:
+            template = await self.get_template(
+                uuid.UUID(str(existing["template_id"]))
+            )
+            if template is None:
+                raise ImiConfigurationError(
+                    details={"template_id": existing["template_id"]}
+                )
+            return template, False
+        result = await self._session.execute(
+            text(
+                "SELECT id, name, document_type, body_template, blocks_json, "
+                "warnings_json, candidates_json, decisions_json, source_sha256, "
+                "source_size_bytes, extractor_version, status "
+                "FROM imi.template_import_jobs WHERE id = :id FOR UPDATE"
+            ),
+            {"id": import_id},
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise TemplateImportNotFoundError(str(import_id))
+        if str(row["status"]) != "SUCCEEDED":
+            from legal_ai.domain.errors import TemplateDefinitionInvalidError
+
+            raise TemplateDefinitionInvalidError(
+                "Solo se puede promover una importación exitosa.",
+                details={"import_id": str(import_id)},
+            )
+        candidates = _json_value(row.get("candidates_json"), [])
+        decisions = _json_value(row.get("decisions_json"), [])
+        candidate_keys = {
+            str(item.get("key"))
+            for item in (candidates if isinstance(candidates, list) else [])
+            if isinstance(item, dict) and item.get("key")
+        }
+        decided_keys = {
+            str(item.get("key"))
+            for item in (decisions if isinstance(decisions, list) else [])
+            if isinstance(item, dict) and item.get("key")
+        }
+        if candidate_keys and candidate_keys != decided_keys:
+            from legal_ai.domain.errors import HumanReviewRequiredError
+
+            raise HumanReviewRequiredError(
+                "La promoción requiere decisiones humanas para todos los candidatos.",
+                details={
+                    "missing": sorted(candidate_keys - decided_keys),
+                },
+            )
+        blocks = _json_value(row.get("blocks_json"), [])
+        body = str(row.get("body_template") or "")
+        # Human decisions gate: CONFIRMED keys must exist as markers/fields,
+        # DISCARDED keys must not remain referenced.
+        confirmed = {
+            str(item.get("key"))
+            for item in (decisions if isinstance(decisions, list) else [])
+            if isinstance(item, dict) and str(item.get("status")).upper() == "CONFIRMED"
+        }
+        discarded = decided_keys - confirmed
+        for key in sorted(discarded):
+            if "{{" + key + "}}" in body or "{{ " + key + " }}" in body:
+                from legal_ai.domain.errors import TemplateDefinitionInvalidError
+
+                raise TemplateDefinitionInvalidError(
+                    "Un candidato descartado sigue referenciado en el contenido.",
+                    details={"key": key},
+                )
+        document_type = str(row["document_type"])
+        name = str(row["name"])
+        body_value, field_values, rule_values, block_values = self._prepared_definition(
+            name=name,
+            body=body,
+            fields=[{"key": k, "label": k, "type": "text"} for k in sorted(confirmed)]
+            or None,
+            rules=None,
+            blocks=blocks if isinstance(blocks, list) else None,
+        )
+        # Ensure confirmed human decisions are represented as typed fields.
+        existing_keys = {str(f.get("key")) for f in field_values}
+        for key in sorted(confirmed - existing_keys):
+            field_values.append(
+                {"key": key, "label": key, "type": "text", "required": False}
+            )
+        document_type_id, _ = await self._document_type_id(document_type)
+        organization_id, _ = await self._organization()
+        template_id = uuid.uuid4()
+        version_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.document_templates "
+                "(id, code, name, document_type_id, organization_id, active) "
+                "VALUES (:id, :code, :name, :document_type_id, :organization_id, true)"
+            ),
+            {
+                "id": template_id,
+                "code": f"IMI_TEMPLATE_{template_id.hex}",
+                "name": name.strip(),
+                "document_type_id": document_type_id,
+                "organization_id": organization_id,
+            },
+        )
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.document_template_versions "
+                "(id, template_id, version, issuing_organization_id, description, body_template) "
+                "VALUES (:id, :template_id, 1, :organization_id, :description, :body)"
+            ),
+            {
+                "id": version_id,
+                "template_id": template_id,
+                "organization_id": organization_id,
+                "description": None,
+                "body": body_value,
+            },
+        )
+        await self._session.execute(
+            text(
+                "INSERT INTO imi.template_version_configs "
+                "(template_version_id, status, revision, fields_json, rules_json, blocks_json, "
+                "instructions, organ_emisor, normativa, extraction_warnings, created_at, updated_at, "
+                "source_import_id, source_sha256, extractor_version) "
+                "VALUES (:version_id, 'DRAFT', 1, CAST(:fields AS jsonb), CAST(:rules AS jsonb), "
+                "CAST(:blocks AS jsonb), NULL, NULL, NULL, CAST(:warnings AS jsonb), :now, :now, "
+                ":source_import_id, :source_sha256, :extractor_version)"
+            ),
+            {
+                "version_id": version_id,
+                "fields": json.dumps(field_values, ensure_ascii=False),
+                "rules": json.dumps(rule_values, ensure_ascii=False),
+                "blocks": json.dumps(block_values, ensure_ascii=False),
+                "warnings": json.dumps(
+                    _json_value(row.get("warnings_json"), []), ensure_ascii=False
+                ),
+                "now": now,
+                "source_import_id": import_id,
+                "source_sha256": row.get("source_sha256"),
+                "extractor_version": row.get("extractor_version"),
+            },
+        )
+        await self._replace_variables(version_id, field_values)
+        await self._session.execute(
+            text(
+                "UPDATE imi.template_import_jobs SET template_version_id = :version_id, "
+                "updated_at = now() WHERE id = :id"
+            ),
+            {"version_id": version_id, "id": import_id},
+        )
+        template = await self.get_template(template_id)
+        if template is None:
+            raise ImiConfigurationError(details={"template_id": str(template_id)})
+        await self._idempotency_put(
+            "template-import-promote",
+            idempotency_key,
+            request_hash,
+            {"template_id": str(template_id)},
+        )
+        return template, True
 
     async def create_template_analysis(
         self,

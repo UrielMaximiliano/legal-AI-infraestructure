@@ -176,6 +176,31 @@ class TemplateVersionResponse(BaseModel):
     extraction_warnings: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+    source_import_id: UUID | None = None
+    source_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    extractor_version: str | None = Field(default=None, max_length=50)
+
+
+class TemplateImportCandidate(BaseModel):
+    """Safe extraction candidate without source text or PII."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=64)
+    origin: str = Field(min_length=1, max_length=20)
+    syntax: str = Field(min_length=1, max_length=30)
+    confidence: float = Field(ge=0, le=1)
+    field_kind: str = Field(min_length=1, max_length=20)
+    occurrences: int = Field(ge=1)
+
+
+class TemplateImportDecision(BaseModel):
+    """Human decision on one extraction candidate."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=64)
+    status: str = Field(pattern=r"^(CONFIRMED|DISCARDED)$")
 
 
 class TemplateImportResponse(BaseModel):
@@ -191,6 +216,35 @@ class TemplateImportResponse(BaseModel):
     error: str | None = None
     retryable: bool = False
     template_version: TemplateVersionResponse | None = None
+    source_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_size_bytes: int | None = Field(default=None, ge=1)
+    extractor_version: str | None = Field(default=None, max_length=50)
+    candidates: list[TemplateImportCandidate] = Field(default_factory=list)
+    decisions: list[TemplateImportDecision] = Field(default_factory=list)
+    decided_by: str | None = Field(default=None, max_length=200)
+    decided_at: datetime | None = None
+
+
+class SaveImportDecisionsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decisions: list[TemplateImportDecision] = Field(min_length=1, max_length=1000)
+
+
+class ValidateTemplateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    document_type: str = Field(min_length=1, max_length=50)
+    body_template: str = Field(min_length=1, max_length=500_000)
+    fields: list[TemplateField] = Field(default_factory=list)
+    rules: list[TemplateRule] = Field(default_factory=list)
+    blocks: list[TemplateBlock] = Field(default_factory=list)
+
+
+class ValidateTemplateResponse(BaseModel):
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class TemplateAnalysisRequest(BaseModel):

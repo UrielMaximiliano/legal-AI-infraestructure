@@ -21,10 +21,15 @@ from fastapi import (
 
 from legal_ai.adapters.database.imi_core import ImiCoreUnitOfWork
 from legal_ai.adapters.database.unit_of_work import UnitOfWork
+from legal_ai.application.docx_parser import DOCX_MIME, DocxParser
 from legal_ai.application.template_management import (
+    TEMPLATE_EXTRACTOR_VERSION,
     extract_file_content,
+    parser_candidates_to_safe,
     preview_document,
     suggestions_for_body,
+    suggestions_to_candidates,
+    validate_definition,
 )
 from legal_ai.application.template_service import TemplateService
 from legal_ai.config import settings
@@ -40,6 +45,7 @@ from legal_ai.schemas.pagination import PaginatedResponse
 from legal_ai.schemas.template import (
     CreateTemplateRequest,
     PublishTemplateRequest,
+    SaveImportDecisionsRequest,
     TemplateAnalysisRequest,
     TemplateAnalysisResponse,
     TemplateImportResponse,
@@ -49,6 +55,8 @@ from legal_ai.schemas.template import (
     TemplateVersionRequest,
     TemplateVersionResponse,
     UpdateTemplateRequest,
+    ValidateTemplateRequest,
+    ValidateTemplateResponse,
 )
 from legal_ai.schemas.validation import validate_idempotency_key
 
@@ -80,6 +88,38 @@ def _imi_idempotency_key(value: str | None) -> str | None:
 
 def _actor(request: Request) -> str:
     return request.headers.get("x-actor") or "imi-leg"
+
+
+def _extraction_provenance(
+    filename: str,
+    content_type: str | None,
+    data: bytes,
+    body: str,
+) -> tuple[str, int, str, list[dict[str, Any]]]:
+    """Build controlled source metadata without logging content or PII."""
+    source_sha256 = hashlib.sha256(data).hexdigest()
+    source_size = len(data)
+    extractor_version = TEMPLATE_EXTRACTOR_VERSION
+    candidates: list[dict[str, Any]] = []
+    lowered = filename.lower()
+    is_docx = lowered.endswith(".docx") or (
+        "wordprocessingml.document" in (content_type or "")
+    )
+    if is_docx:
+        try:
+            declared = content_type if content_type == DOCX_MIME else None
+            parsed = DocxParser().parse_bytes(
+                data, filename=filename, declared_mime=declared
+            )
+            candidates = parser_candidates_to_safe(parsed.candidates)
+        except Exception:
+            candidates = []
+    else:
+        try:
+            candidates = suggestions_to_candidates(suggestions_for_body(body, []))
+        except Exception:
+            candidates = []
+    return source_sha256, source_size, extractor_version, candidates
 
 
 def _reject_legacy_write() -> None:
@@ -215,17 +255,17 @@ async def list_template_versions(
             from legal_ai.application.template_service import TemplateNotFoundError
 
             raise TemplateNotFoundError(str(template_id))
-        items, total = await uow.core.list_template_versions(template_id)
-    start = (page - 1) * page_size
+        items, total = await uow.core.list_template_versions(
+            template_id,
+            limit=page_size,
+            offset=(page - 1) * page_size,
+        )
     return PaginatedResponse(
         page=page,
         page_size=page_size,
         total=total,
         request_id=str(getattr(request.state, "request_id", "")),
-        items=[
-            TemplateVersionResponse.model_validate(item)
-            for item in items[start : start + page_size]
-        ],
+        items=[TemplateVersionResponse.model_validate(item) for item in items],
     )
 
 
@@ -363,6 +403,7 @@ async def publish_template_version(
             confirm_warnings=body.confirm_warnings,
             idempotency_key=key,
             request_hash=_request_hash(payload),
+            actor=_actor(request),
         )
     response.status_code = 201 if created else 200
     return TemplateVersionResponse.model_validate(version)
@@ -486,13 +527,16 @@ async def start_template_import(
     body, blocks, warnings, pages_total = extract_file_content(
         filename, file.content_type, data
     )
+    source_sha256, source_size, extractor_version, candidates = (
+        _extraction_provenance(filename, file.content_type, data, body)
+    )
     request_hash = _request_hash(
         {
             "name": name,
             "document_type": document_type,
             "filename": filename,
             "content_type": file.content_type,
-            "sha256": hashlib.sha256(data).hexdigest(),
+            "sha256": source_sha256,
         }
     )
     async with ImiCoreUnitOfWork() as uow:
@@ -510,6 +554,10 @@ async def start_template_import(
             pages_total=pages_total,
             idempotency_key=key,
             request_hash=request_hash,
+            source_sha256=source_sha256,
+            source_size_bytes=source_size,
+            extractor_version=extractor_version,
+            candidates=candidates,
         )
     return TemplateImportResponse.model_validate(job)
 
@@ -598,6 +646,89 @@ async def cancel_template_import(
             request_hash=_request_hash({"import_id": str(import_id)}),
         )
     return TemplateImportResponse.model_validate(job)
+
+
+@template_jobs_router.post(
+    "/api/v1/template-imports/{import_id}/decisions",
+    response_model=TemplateImportResponse,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+async def save_import_decisions(
+    request: Request,
+    import_id: UUID,
+    body: SaveImportDecisionsRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> TemplateImportResponse:
+    """Persist human decisions on extraction candidates (review gate)."""
+    if settings.rag_profile.code != "imi_leg_06b":
+        raise HTTPException(
+            status_code=501, detail="Importación de plantillas no disponible"
+        )
+    key = _imi_idempotency_key(idempotency_key)
+    payload = body.model_dump(mode="json")
+    async with ImiCoreUnitOfWork() as uow:
+        if uow.core is None:
+            raise RuntimeError("IMI_CORE_UNAVAILABLE")
+        job, _created = await uow.core.save_import_decisions(
+            import_id,
+            decisions=[item.model_dump(mode="json") for item in body.decisions],
+            actor=_actor(request),
+            idempotency_key=key,
+            request_hash=_request_hash(
+                {"import_id": str(import_id), **payload}
+            ),
+        )
+    return TemplateImportResponse.model_validate(job)
+
+
+@template_jobs_router.post(
+    "/api/v1/template-imports/{import_id}/promote",
+    response_model=TemplateResponse,
+    status_code=201,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+async def promote_import_to_template(
+    request: Request,
+    response: Response,
+    import_id: UUID,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> TemplateResponse:
+    """Create a DRAFT template from a reviewed import (human approval gate)."""
+    if settings.rag_profile.code != "imi_leg_06b":
+        raise HTTPException(
+            status_code=501, detail="Importación de plantillas no disponible"
+        )
+    key = _imi_idempotency_key(idempotency_key)
+    async with ImiCoreUnitOfWork() as uow:
+        if uow.core is None:
+            raise RuntimeError("IMI_CORE_UNAVAILABLE")
+        template, created = await uow.core.promote_import_to_template(
+            import_id,
+            actor=_actor(request),
+            idempotency_key=key,
+            request_hash=_request_hash({"import_id": str(import_id)}),
+        )
+    response.status_code = 201 if created else 200
+    return TemplateResponse.model_validate(template)
+
+
+@template_jobs_router.post(
+    "/api/v1/template-validations",
+    response_model=ValidateTemplateResponse,
+    responses={422: {"model": ErrorResponse}},
+)
+async def validate_template_definition(
+    body: ValidateTemplateRequest,
+) -> ValidateTemplateResponse:
+    """Validate typed fields/rules/warnings without persisting (validation gate)."""
+    errors = validate_definition(
+        name=body.name,
+        body=body.body_template,
+        fields=[item.model_dump(mode="json") for item in body.fields],
+        rules=[item.model_dump(mode="json") for item in body.rules],
+        blocks=[item.model_dump(mode="json") for item in body.blocks],
+    )
+    return ValidateTemplateResponse(errors=errors, warnings=[])
 
 
 @template_jobs_router.post(

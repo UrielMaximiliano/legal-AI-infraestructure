@@ -657,6 +657,55 @@ def suggestions_for_body(body: str, fields: Sequence[object]) -> list[dict[str, 
     return list(grouped.values())
 
 
+TEMPLATE_EXTRACTOR_VERSION = "docx-parser-v1"
+
+
+def parser_candidates_to_safe(candidates: Sequence[object]) -> list[dict[str, Any]]:
+    """Convert DocxParser candidates to PII-free import candidates."""
+    safe: list[dict[str, Any]] = []
+    for item in candidates:
+        as_dict = getattr(item, "to_safe_dict", None)
+        payload = dict(as_dict()) if callable(as_dict) else _value(item)
+        key = str(payload.get("normalized_key") or payload.get("key") or "").strip()
+        if not key:
+            continue
+        safe.append(
+            {
+                "key": key,
+                "origin": str(payload.get("origin") or "PARAGRAPH"),
+                "syntax": str(payload.get("syntax") or "BLANK"),
+                "confidence": float(payload.get("confidence") or 0.5),
+                "field_kind": str(payload.get("field_kind") or "TEXT"),
+                "occurrences": int(payload.get("occurrences") or 1),
+            }
+        )
+    return safe
+
+
+def suggestions_to_candidates(
+    suggestions: Sequence[object],
+) -> list[dict[str, Any]]:
+    """Convert body suggestions to PII-free import candidates (PDF fallback)."""
+    safe: list[dict[str, Any]] = []
+    for item in (_value(entry) for entry in suggestions):
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        occurrences = item.get("occurrences") or []
+        count = len(occurrences) if isinstance(occurrences, list) else 1
+        safe.append(
+            {
+                "key": key,
+                "origin": "PARAGRAPH",
+                "syntax": "BLANK",
+                "confidence": float(item.get("confidence") or 0.55),
+                "field_kind": "TEXT",
+                "occurrences": max(1, count),
+            }
+        )
+    return safe
+
+
 def extract_file_content(
     filename: str, content_type: str | None, data: bytes
 ) -> tuple[str, list[dict[str, Any]], list[str], int]:
